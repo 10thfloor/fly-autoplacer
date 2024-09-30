@@ -1,58 +1,120 @@
-# Fly Scaler
+# Fly Placer
 
-Fly Scaler is a simple predictive smart region placement service for [Fly.io](https://fly.io). It automatically scales machines across regions based on traffic patterns, optimizing resource utilization and improving application performance globally.
+Fly Placer is a utility for retrieving and displaying region-specific HTTP traffic data for your [Fly.io](https://fly.io) applications. By fetching metrics from Fly.io's Prometheus endpoint, it helps you analyze traffic patterns and understand where your application is most used globally.
 
 ## Features
 
-- **Predictive Scaling**: Utilizes historical traffic data to forecast demand and adjust resources proactively.
-- **Automatic Region Management**: Scales machines up or down across different regions based on real-time metrics.
-- **Dry Run Mode**: Allows testing of scaling strategies without affecting live deployments.
-- **Fly.io CLI Integration**: Seamlessly interacts with Fly.io's command-line interface for efficient machine management.
+- **Real-Time Traffic Metrics**: Fetches current HTTP response counts per region.
+- **Prometheus API Integration**: Connects directly to Fly.io's Prometheus API for up-to-date metrics.
+- **Simple Output**: Displays results in an easy-to-read JSON format.
 
 ## Prerequisites
 
 - **Python 3.8+**
-- **Fly.io CLI**: Install [here](https://fly.io/docs/hands-on/install-flyctl/).
-- **Poetry**: Dependency management tool. Install with:
-
-  ```bash
-  pip install poetry
-  ```
+- **Fly.io Account**: Ensure you have access to your application's metrics.
+- **Fly.io API Token**: Required for authentication with the Fly.io API.
+- **Prometheus Metrics Enabled**: Your application must have Prometheus metrics available.
+- **pip**: Python package installer.
 
 ## Installation
 
 1. **Clone the Repository**:
 
    ```bash
-   git clone https://github.com/yourusername/fly-scaler.git
+   git clone https://github.com/yourusername/fly-placer.git
    ```
 
 2. **Navigate to the Project Directory**:
 
    ```bash
-   cd fly-scaler
+   cd fly-placer
    ```
 
 3. **Install Dependencies**:
 
    ```bash
-   poetry install
+   pip install -r requirements.txt
    ```
 
 ## Configuration
 
-Customize the scaler by modifying the `config.yaml` file.
+Create a `.env` file in the project root with the following variables:
 
-## Configuration Options
+```dotenv
+FLY_API_TOKEN=your_fly_api_token
+FLY_PROMETHEUS_URL=https://api.fly.io/prometheus/personal
+FLY_APP_NAME=your_fly_app_name
+```
 
-The `config.yaml` file allows you to customize the behavior of Fly Scaler. Here are the available configuration options:
+### Obtaining Your Fly.io API Token
 
-- `app_name`: The name of your Fly.io application.
-- `regions`: List of regions to monitor and scale.
-- `scaling_interval`: Time interval (in minutes) between scaling decisions.
-- `traffic_threshold`: Traffic threshold to trigger scaling actions.
-- `max_machines_per_region`: Maximum number of machines allowed in each region.
-- `min_machines_per_region`: Minimum number of machines to maintain in each region.
-- `dry_run`: Boolean flag to enable or disable dry run mode.
+- Log in to your Fly.io account.
+- Navigate to **Account Settings**.
+- Generate a new personal access token with appropriate permissions.
 
-Example `config.yaml`:
+### Setting Up Prometheus Metrics
+
+- Ensure that your Fly.io application is configured to expose Prometheus metrics.
+- Refer to the [Fly.io Metrics Documentation](https://fly.io/docs/reference/metrics/) for details.
+
+## Usage
+
+1. **Run the Script**:
+
+   ```bash
+   python main.py
+   ```
+
+2. **View the Output**:
+
+   The script will output a JSON object displaying the number of HTTP responses per region over the last 5 minutes.
+
+   Example:
+
+   ```json
+   {
+     "ams": 150.0,
+     "dfw": 200.0,
+     "fra": 180.0,
+     "lhr": 75.0
+   }
+   ```
+
+## Understanding the Output
+
+- **Region Codes**: Represent Fly.io data center locations.
+- **HTTP Response Counts**: Indicate the volume of traffic handled in each region.
+
+### Use Cases
+
+- **Traffic Analysis**: Identify where your users are located to optimize performance.
+- **Scaling Decisions**: Determine which regions may require additional resources.
+
+## Troubleshooting
+
+- **Authentication Errors**:
+
+  - Ensure your `FLY_API_TOKEN` is correct and has the necessary permissions.
+  - Verify that the token is correctly specified in the `.env` file.
+
+- **Empty Output or Missing Regions**:
+
+  - Confirm that your application is receiving traffic.
+  - Check that Prometheus metrics are enabled and accessible.
+
+- **Dependency Issues**:
+
+  - Install required packages manually:
+
+    ```bash
+    pip install requests python-dotenv
+    ```
+
+## Contributing
+
+Contributions are welcome! Feel free to open issues or submit pull requests for enhancements and bug fixes.
+
+## License
+
+This project is licensed under the MIT License.
+
