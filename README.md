@@ -1,6 +1,6 @@
 # Fly Placer
 
-Fly Placer is a utility for retrieving and displaying region-specific HTTP traffic data for your [Fly.io](https://fly.io) applications. By fetching metrics from Fly.io's Prometheus endpoint, it helps you analyze traffic patterns and understand where your application is most used globally.
+Fly Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating, if they're not already deployed there. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns. The goal is to seamlessly integrate this tool into your Fly deployments for optimal global performance. Currently, it is a work in progress or proof of concept (POC).
 
 ## Features
 
