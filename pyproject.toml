@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "fly-placer"
+version = "0.1.0"
+description = "Simple Predictive Smart Region Placement Service for Fly.io"
+authors = ["Mackenzie Kieran <mackenzie.kieran@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "fly-placer", from = "." }]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+requests = "^2.26.0"
+PyYAML = "^6.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+pytest-mock = "^3.6.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
