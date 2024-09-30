@@ -1,19 +1,20 @@
 [tool.poetry]
 name = "fly-placer"
 version = "0.1.0"
-description = "Simple Predictive Smart Region Placement Service for Fly.io"
-authors = ["Mackenzie Kieran <mackenzie.kieran@gmail.com>"]
+description = "An auto-placer for Fly.io deployments based on real-time traffic patterns."
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
 readme = "README.md"
-packages = [{ include = "fly-placer", from = "." }]
+packages = [{ include = "fly_placer", from = "." }]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-requests = "^2.26.0"
-PyYAML = "^6.0"
+python = ">=3.8,<4.0"
+requests = "^2.27.1"
+python-dotenv = "^0.20.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
-pytest-mock = "^3.6.1"
+pytest = "^7.0"
+flake8 = "^4.0"
 
 [build-system]
 requires = ["poetry-core"]

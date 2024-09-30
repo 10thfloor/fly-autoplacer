@@ -16,8 +16,6 @@ print(f"SCALE_UP_THRESHOLD: {SCALE_UP_THRESHOLD}, Type: {type(SCALE_UP_THRESHOLD
 print(f"SCALE_DOWN_THRESHOLD: {SCALE_DOWN_THRESHOLD}, Type: {type(SCALE_DOWN_THRESHOLD)}")
 
 TRAFFIC_HISTORY_FILE = 'data/traffic_history.json'
-os.makedirs('data', exist_ok=True)
-
 
 def predict_placement_actions(history, current_regions):
     # Calculate average traffic per region

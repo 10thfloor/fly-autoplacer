@@ -23,7 +23,6 @@ with open('config.yaml', 'r') as f:
 DRY_RUN = config['dry_run']
 COOLDOWN_PERIOD = int(config['cooldown_period'])
 FLY_APP_NAME = config['fly_app_name']
-os.makedirs('data', exist_ok=True)
 
 def get_current_regions():
     deployment_state = load_deployment_state()
