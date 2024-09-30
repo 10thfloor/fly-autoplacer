@@ -1,5 +1,5 @@
 import unittest
-from prediction.placement_predictor import predict_scaling_actions
+from prediction.placement_predictor import predict_placement_actions
 
 class TestTrafficPredictor(unittest.TestCase):
     def test_predict_scaling_actions(self):
@@ -8,7 +8,8 @@ class TestTrafficPredictor(unittest.TestCase):
             '2023-10-01T12:05:00Z': {'CD': 130, 'IAD': 35},
             # Add more data points as needed
         }
-        regions_to_deploy, regions_to_remove = predict_scaling_actions(history)
+        current_regions = ['CD', 'IAD']  # Define current regions for the test
+        regions_to_deploy, regions_to_remove = predict_placement_actions(history, current_regions)
         self.assertIn('CD', regions_to_deploy)
         self.assertIn('IAD', regions_to_remove)
 

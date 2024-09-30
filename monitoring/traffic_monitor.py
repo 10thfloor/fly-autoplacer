@@ -5,8 +5,13 @@ import json
 from collections import defaultdict
 from utils.state_manager import load_deployment_state
 
-TRAFFIC_HISTORY_FILE = 'data/traffic_history.json'
+
 os.makedirs('data', exist_ok=True)
+
+TRAFFIC_LEVEL_WEIGHTS_DEPLOYED = [0.4, 0.4, 0.1, 0.1]
+TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED = [0.1, 0.1, 0.3, 0.5]
+MAX_HISTORY_ENTRIES = 5
+
 
 def get_recent_logs():
     """
@@ -51,14 +56,14 @@ def get_recent_logs():
             # Deployed regions have higher chance of low traffic
             traffic_level = random.choices(
                 population=list(traffic_levels.keys()),
-                weights=[0.4, 0.4, 0.1, 0.1],  # Increase chances of 'very_low' and 'low' traffic
+                weights=TRAFFIC_LEVEL_WEIGHTS_DEPLOYED,  # Increase chances of 'very_low' and 'low' traffic
                 k=1
             )[0]
         else:
             # Non-deployed regions have higher chance of high traffic
             traffic_level = random.choices(
                 population=list(traffic_levels.keys()),
-                weights=[0.1, 0.1, 0.3, 0.5],  # Increase chances of 'high' traffic
+                weights=TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED,  # Increase chances of 'high' traffic
                 k=1
             )[0]
         
@@ -78,8 +83,11 @@ def get_region(ip):
         '203.0.113.5': 'CDG',
         '198.51.100.50': 'AMS',
         '198.51.100.23': 'IAD',
+        '192.0.2.45': 'SIN',
+        '198.51.100.45': 'NRT',
+        '198.51.100.55': 'LDN',
     }
-    return ip_region_map.get(ip, None)
+    return ip_region_map.get(ip)
 
 def collect_region_traffic():
     logs = get_recent_logs()
@@ -94,32 +102,3 @@ def collect_region_traffic():
     print(f"Aggregated traffic per region: {dict(region_counts)}")
     return region_counts
 
-def load_traffic_history():
-    if os.path.exists(TRAFFIC_HISTORY_FILE):
-        with open(TRAFFIC_HISTORY_FILE, 'r') as f:
-            return json.load(f)
-    else:
-        return {}
-
-def save_traffic_history(history):
-    with open(TRAFFIC_HISTORY_FILE, 'w') as f:
-        json.dump(history, f)
-
-def update_traffic_history(current_data):
-    """
-    Updates the traffic history with the latest data and maintains a maximum number of entries.
-    """
-    history = load_traffic_history()
-
-    # Keep only the latest N entries
-    max_entries = 3
-    timestamp = datetime.utcnow().isoformat()
-    history[timestamp] = current_data
-    if len(history) > max_entries:
-        # Remove the oldest entries
-        sorted_keys = sorted(history.keys())
-        for key in sorted_keys[:-max_entries]:
-            del history[key]
-
-    save_traffic_history(history)
-    return history
