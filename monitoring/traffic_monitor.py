@@ -10,12 +10,12 @@ TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED = [0.1, 0.1, 0.3, 0.5]
 MAX_HISTORY_ENTRIES = 5
 
 IP_REGION_MAP = {
-    '203.0.113.5': 'CDG',
-    '198.51.100.50': 'AMS',
-    '198.51.100.23': 'IAD',
-    '192.0.2.45': 'SIN',
-    '198.51.100.45': 'NRT',
-    '198.51.100.55': 'LDN',
+    '203.0.113.5': 'cdg',
+    '198.51.100.50': 'ams',
+    '198.51.100.23': 'iad',
+    '192.0.2.45': 'sin',
+    '198.51.100.45': 'nrt',
+    '198.51.100.55': 'lhr',
 }
 
 def get_recent_logs():
@@ -31,12 +31,6 @@ def get_recent_logs():
         'low': (11, 29),        # Below remove threshold
         'medium': (30, 70),     # Around thresholds
         'high': (71, 100),      # Above deploy threshold
-    }
-    traffic_level_weights = {
-        'very_low': 0.2,
-        'low': 0.3,
-        'medium': 0.3,
-        'high': 0.2,
     }
     
     # Region list

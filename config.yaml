@@ -1,6 +1,6 @@
 dry_run: true
 scale_up_threshold: 50
-scale_down_threshold: 30
+scale_down_threshold: 30 
 cooldown_period: 300  # in seconds
 fly_app_name: "your-app-name"
 fly_api_token: "your_fly_api_token"

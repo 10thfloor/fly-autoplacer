@@ -12,7 +12,7 @@ from monitoring.traffic_monitor import collect_region_traffic
 from utils.history_manager import update_traffic_history
 from prediction.placement_predictor import predict_placement_actions
 from utils.state_manager import load_deployment_state, save_deployment_state
-from automation.logger import get_logger, log_action
+from utils.fancy_logger import get_logger, log_action
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,7 @@ FLY_APP_NAME = config['fly_app_name']
 
 def get_current_regions():
     deployment_state = load_deployment_state()
-    current_regions = [region.upper() for region in deployment_state]
+    current_regions = [region for region in deployment_state]
     print(f"Current deployment regions: {current_regions}")
     return current_regions
 
@@ -56,7 +56,6 @@ def update_placements(regions_to_deploy, regions_to_remove):
             subprocess.run(['bash', 'scripts/remove_machine.sh', region, FLY_APP_NAME])
 
 def main():
-    logger = get_logger(__name__)
     logger.info("Collecting current traffic data...")
     current_data = collect_region_traffic()
     logger.debug(f"Current traffic data: {current_data}")
