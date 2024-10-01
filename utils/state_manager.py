@@ -14,16 +14,20 @@ def load_deployment_state():
             with open(DEPLOYMENT_STATE_FILE, 'r') as f:
                 content = f.read().strip()
                 if content:
-                    return json.loads(content)
+                    data = json.loads(content)
+                    if isinstance(data, list):
+                        # Convert old list format to new dict format with null timestamps
+                        data = {region: None for region in data}
+                    return data
                 else:
-                    logger.warning("Deployment state file is empty. Initializing with empty list.")
-                    return []
+                    logger.warning("Deployment state file is empty. Initializing with empty dict.")
+                    return {}
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in deployment state file: {e}")
-            return []
+            return {}
     else:
-        logger.info("Deployment state file does not exist. Initializing with empty list.")
-        return []
+        logger.info("Deployment state file does not exist. Initializing with empty dict.")
+        return {}
 
 def save_deployment_state(state):
     os.makedirs(os.path.dirname(DEPLOYMENT_STATE_FILE), exist_ok=True)
