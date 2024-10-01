@@ -5,20 +5,14 @@ cooldown_period: 300  # in seconds
 fly_app_name: "your-app-name"
 
 allowed_regions:
-  - "cdg"
   - "ams"
-  - "iad"
+  - "fra"
+  - "lhr"
+
+excluded_regions:
   - "sin"
   - "nrt"
-  - "ldn"
-  
-excluded_regions:
-  - "lhr"
-  - "fra"
-  - "mad"
-  - "ber"
-  - "prg"
-  - "waw"
-  - "hel"
-  - "osl"
-  - "cph"
+
+always_running_regions:
+  - "iad"
+  - "cdg"

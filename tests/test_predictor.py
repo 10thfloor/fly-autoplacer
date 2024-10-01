@@ -2,16 +2,28 @@ import unittest
 from prediction.placement_predictor import predict_placement_actions
 
 class TestTrafficPredictor(unittest.TestCase):
-    def test_predict_scaling_actions(self):
-        history = {
-            '2023-10-01T12:00:00Z': {'CD': 120, 'IAD': 40},
-            '2023-10-01T12:05:00Z': {'CD': 130, 'IAD': 35},
-            # Add more data points as needed
-        }
-        current_regions = ['CD', 'IAD']  # Define current regions for the test
+    def test_always_running_regions(self):
+        history = {}
+        current_regions = []
+        ALWAYS_RUNNING_REGIONS = ['iad', 'cdg']
+        
         regions_to_deploy, regions_to_remove = predict_placement_actions(history, current_regions)
-        self.assertIn('CD', regions_to_deploy)
-        self.assertIn('IAD', regions_to_remove)
+        
+        self.assertIn('iad', regions_to_deploy)
+        self.assertIn('cdg', regions_to_deploy)
+        self.assertEqual(len(regions_to_remove), 0)
+    
+    def test_conflicts_with_excluded_regions(self):
+        history = {}
+        current_regions = []
+        EXCLUDED_REGIONS = ['cdg']
+        ALWAYS_RUNNING_REGIONS = ['iad', 'cdg']
+        
+        regions_to_deploy, regions_to_remove = predict_placement_actions(history, current_regions)
+        
+        self.assertIn('iad', regions_to_deploy)
+        self.assertNotIn('cdg', regions_to_deploy)  # Excluded region should not be deployed
+        self.assertEqual(len(regions_to_remove), 0)
 
 if __name__ == '__main__':
     unittest.main()

@@ -26,6 +26,7 @@ FLY_APP_NAME = config['fly_app_name']
 
 ALLOWED_REGIONS = config.get('allowed_regions', [])
 EXCLUDED_REGIONS = config.get('excluded_regions', [])
+ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
 
 def get_current_regions():
     deployment_state = load_deployment_state()
@@ -36,25 +37,29 @@ def get_current_regions():
 def update_placements(regions_to_deploy, regions_to_remove):
     deployment_state = load_deployment_state()
     
-    # Deploy machines to allowed regions only
+    # Deploy machines
     for region in regions_to_deploy:
-        if (not ALLOWED_REGIONS or region in ALLOWED_REGIONS) and region not in EXCLUDED_REGIONS:
-            log_action("deploy", region, DRY_RUN)
-            if region not in deployment_state:
-                deployment_state.append(region)
-                save_deployment_state(deployment_state)
-            if DRY_RUN:
-                print(f"[DRY RUN] Would deploy machine to region: {region}")
-            else:
-                logger.info(f"Deploying machine to region: {region}")
-                subprocess.run(['bash', 'scripts/deploy_machine.sh', region, FLY_APP_NAME])
-
-    # Remove machines from regions as specified
-    for region in regions_to_remove:
-        log_action("remove", region, DRY_RUN)
         if region in deployment_state:
-            deployment_state.remove(region)
-            save_deployment_state(deployment_state)
+            continue  # Already deployed
+        log_action("deploy", region, DRY_RUN)
+        deployment_state.append(region)
+        save_deployment_state(deployment_state)
+        if DRY_RUN:
+            print(f"[DRY RUN] Would deploy machine to region: {region}")
+        else:
+            logger.info(f"Deploying machine to region: {region}")
+            subprocess.run(['bash', 'scripts/deploy_machine.sh', region, FLY_APP_NAME])
+
+    # Remove machines
+    for region in regions_to_remove:
+        if region not in deployment_state:
+            continue  # Not deployed
+        if region in ALWAYS_RUNNING_REGIONS:
+            logger.info(f"Skipping removal of always running region: {region}")
+            continue
+        log_action("remove", region, DRY_RUN)
+        deployment_state.remove(region)
+        save_deployment_state(deployment_state)
         if DRY_RUN:
             print(f"[DRY RUN] Would remove machine from region: {region}")
         else:
