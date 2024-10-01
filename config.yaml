@@ -3,4 +3,22 @@ scale_up_threshold: 50
 scale_down_threshold: 30 
 cooldown_period: 300  # in seconds
 fly_app_name: "your-app-name"
-fly_api_token: "your_fly_api_token"
+
+allowed_regions:
+  - "cdg"
+  - "ams"
+  - "iad"
+  - "sin"
+  - "nrt"
+  - "ldn"
+  
+excluded_regions:
+  - "lhr"
+  - "fra"
+  - "mad"
+  - "ber"
+  - "prg"
+  - "waw"
+  - "hel"
+  - "osl"
+  - "cph"

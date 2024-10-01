@@ -24,6 +24,9 @@ DRY_RUN = config['dry_run']
 COOLDOWN_PERIOD = int(config['cooldown_period'])
 FLY_APP_NAME = config['fly_app_name']
 
+ALLOWED_REGIONS = config.get('allowed_regions', [])
+EXCLUDED_REGIONS = config.get('excluded_regions', [])
+
 def get_current_regions():
     deployment_state = load_deployment_state()
     current_regions = [region for region in deployment_state]
@@ -33,17 +36,20 @@ def get_current_regions():
 def update_placements(regions_to_deploy, regions_to_remove):
     deployment_state = load_deployment_state()
     
-    for region in regions_to_deploy:    
-        log_action("deploy", region, DRY_RUN)
-        if region not in deployment_state:
-            deployment_state.append(region)
-            save_deployment_state(deployment_state)
-        if DRY_RUN:
-            print(f"[DRY RUN] Would deploy machine to region: {region}")
-        else:
-            logger.info(f"Deploying machine to region: {region}")
-            subprocess.run(['bash', 'scripts/deploy_machine.sh', region, FLY_APP_NAME])
-    
+    # Deploy machines to allowed regions only
+    for region in regions_to_deploy:
+        if (not ALLOWED_REGIONS or region in ALLOWED_REGIONS) and region not in EXCLUDED_REGIONS:
+            log_action("deploy", region, DRY_RUN)
+            if region not in deployment_state:
+                deployment_state.append(region)
+                save_deployment_state(deployment_state)
+            if DRY_RUN:
+                print(f"[DRY RUN] Would deploy machine to region: {region}")
+            else:
+                logger.info(f"Deploying machine to region: {region}")
+                subprocess.run(['bash', 'scripts/deploy_machine.sh', region, FLY_APP_NAME])
+
+    # Remove machines from regions as specified
     for region in regions_to_remove:
         log_action("remove", region, DRY_RUN)
         if region in deployment_state:

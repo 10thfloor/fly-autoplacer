@@ -12,6 +12,9 @@ with open('config.yaml', 'r') as f:
 SCALE_UP_THRESHOLD = int(config['scale_up_threshold'])
 SCALE_DOWN_THRESHOLD = int(config['scale_down_threshold'])
 
+ALLOWED_REGIONS = config.get('allowed_regions', [])
+EXCLUDED_REGIONS = config.get('excluded_regions', [])
+
 print(f"SCALE_UP_THRESHOLD: {SCALE_UP_THRESHOLD}, Type: {type(SCALE_UP_THRESHOLD)}")
 print(f"SCALE_DOWN_THRESHOLD: {SCALE_DOWN_THRESHOLD}, Type: {type(SCALE_DOWN_THRESHOLD)}")
 
@@ -35,11 +38,18 @@ def predict_placement_actions(history, current_regions):
     # Determine placement actions
     regions_to_deploy = [
         region for region, avg in average_traffic.items()
-        if avg > SCALE_UP_THRESHOLD and region not in current_regions
+        if avg > SCALE_UP_THRESHOLD
+        and region not in current_regions
+        and (not ALLOWED_REGIONS or region in ALLOWED_REGIONS)
+        and region not in EXCLUDED_REGIONS
     ]
     regions_to_remove = [
-        region for region, avg in average_traffic.items()
-        if avg < SCALE_DOWN_THRESHOLD and region in current_regions
+        region for region in current_regions
+        if (
+            average_traffic.get(region, 0) < SCALE_DOWN_THRESHOLD
+            or region in EXCLUDED_REGIONS
+            or (ALLOWED_REGIONS and region not in ALLOWED_REGIONS)
+        )
     ]
     
     return regions_to_deploy, regions_to_remove
