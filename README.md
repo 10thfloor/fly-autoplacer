@@ -57,6 +57,43 @@ FLY_APP_NAME=your_fly_app_name
 - Ensure that your Fly.io application is configured to expose Prometheus metrics.
 - Refer to the [Fly.io Metrics Documentation](https://fly.io/docs/reference/metrics/) for details.
 
+### Configuring the Auto Placer
+
+- Create a `config.yaml` file in the project root with the following variables:
+
+```yaml
+dry_run: true
+scale_up_threshold: 50
+scale_down_threshold: 30 
+cooldown_period: 300  # in seconds
+fly_app_name: "your-app-name"
+
+allowed_regions:
+  - "ams"
+  - "fra"
+  - "lhr"
+
+excluded_regions:
+  - "sin"
+  - "nrt"
+
+always_running_regions:
+  - "iad"
+  - "cdg"
+```
+
+*Options*
+
+- `dry_run`: If true, the script will not make any changes to the Fly.io API.
+- `scale_up_threshold`: The percentage of traffic that triggers a scale-up action.
+- `scale_down_threshold`: The percentage of traffic that triggers a scale-down action.
+- `cooldown_period`: The number of seconds to wait before allowing another action.
+- `fly_app_name`: The name of your Fly.io application.
+- `allowed_regions`: A list of regions to allow deployment to.
+- `excluded_regions`: A list of regions to exclude from deployment.
+- `always_running_regions`: A list of regions to always keep running.
+
+
 ## Usage
 
 1. **Run the Script**:
