@@ -63,8 +63,10 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
 
 3. **Install Dependencies**:
 
+   This project uses [Poetry](https://python-poetry.org/) for dependency management.
+
    ```bash
-   pip install -r requirements.txt
+   poetry install
    ```
 
 ## Configuration
@@ -128,20 +130,10 @@ always_running_regions:
 
 ### 5. Required Tools
 
-- **Flyctl**: Install the Fly.io command-line tool.
+- **Fly CLI**: Install the Fly.io command-line tool.
 
   ```bash
   curl -L https://fly.io/install.sh | sh
-  ```
-
-- **jq**: Install `jq` for JSON processing.
-
-  ```bash
-  # On macOS
-  brew install jq
-
-  # On Ubuntu/Debian
-  sudo apt-get install jq
   ```
 
 ## Usage
@@ -149,7 +141,7 @@ always_running_regions:
 1. **Run the Script**:
 
    ```bash
-   python main.py
+   poetry run python3 main.py
    ```
 
 2. **Monitor Logs**:
