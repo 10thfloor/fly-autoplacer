@@ -34,7 +34,6 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
     - [Example Traffic Data](#example-traffic-data)
   - [Roadmap](#roadmap)
   - [Troubleshooting](#troubleshooting)
-  - [Contributing](#contributing)
   - [License](#license)
 
 ## Prerequisites
@@ -200,46 +199,6 @@ always_running_regions:
   - Confirm that your application is receiving traffic.
   - Check that Prometheus metrics are enabled and accessible.
 
-- **Dependency Issues**:
-
-  - Install required packages manually:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-- **Flyctl Not Found**:
-
-  - Ensure that `flyctl` is installed and added to your PATH.
-
-- **jq Not Found**:
-
-  - Install `jq` for your operating system.
-
-## Contributing
-
-Contributions are welcome! Please open issues or submit pull requests for enhancements and bug fixes.
-
-1. **Fork the Project**
-2. **Create your Feature Branch**:
-
-   ```bash
-   git checkout -b feature/YourFeature
-   ```
-
-3. **Commit your Changes**:
-
-   ```bash
-   git commit -m 'Add YourFeature'
-   ```
-
-4. **Push to the Branch**:
-
-   ```bash
-   git push origin feature/YourFeature
-   ```
-
-5. **Open a Pull Request**
 
 ## License
 
