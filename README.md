@@ -42,9 +42,8 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
 - **Fly.io Account**: Ensure you have access to your application's metrics.
 - **Fly.io API Token**: Required for authentication with the Fly.io API.
 - **Prometheus Metrics Enabled**: Your application must expose Prometheus metrics.
-- **pip**: Python package installer.
-- **Flyctl**: Fly.io command-line tool.
-- **jq**: Command-line JSON processor (used in deployment scripts).
+- **poetry**: Python package installer.
+- **Fly CLI**: Fly.io command-line tool.
 
 ## Installation
 
