@@ -38,7 +38,7 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
 
 ## Prerequisites
 
-- **Python 3.8+**
+- **Python 3.9+**
 - **Fly.io Account**: Ensure you have access to your application's metrics.
 - **Fly.io API Token**: Required for authentication with the Fly.io API.
 - **Prometheus Metrics Enabled**: Your application must expose Prometheus metrics.
