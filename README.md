@@ -139,7 +139,7 @@ always_running_regions:
 1. **Run the Script**:
 
    ```bash
-   poetry run python3 main.py
+   fastapi dev main.py
    ```
 
 2. **Monitor Logs**:
