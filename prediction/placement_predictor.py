@@ -16,9 +16,6 @@ ALLOWED_REGIONS = config.get('allowed_regions', [])
 EXCLUDED_REGIONS = config.get('excluded_regions', [])
 ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
 
-print(f"SCALE_UP_THRESHOLD: {SCALE_UP_THRESHOLD}, Type: {type(SCALE_UP_THRESHOLD)}")
-print(f"SCALE_DOWN_THRESHOLD: {SCALE_DOWN_THRESHOLD}, Type: {type(SCALE_DOWN_THRESHOLD)}")
-
 TRAFFIC_HISTORY_FILE = 'data/traffic_history.json'
 
 def predict_placement_actions(history, current_regions):

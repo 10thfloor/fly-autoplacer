@@ -1,6 +1,6 @@
 # Sanity Check: Is This Approach Worth Continuing?
 
-Hey fellow devs! I've been working on this auto-placement system for Fly.io, and I wanted to share my thoughts on whether it's worth pursuing further. Short answer: yes, but we need to make some tweaks.
+I wanted to share my thoughts on whether it's worth pursuing further. Short answer: yes, but we need to make some tweaks.
 
 ## Current Approach
 

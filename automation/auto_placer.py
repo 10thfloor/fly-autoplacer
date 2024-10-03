@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 import yaml
+import json
 from datetime import datetime, timedelta
 from monitoring.traffic_monitor import collect_region_traffic
 from utils.history_manager import update_traffic_history
@@ -14,6 +15,7 @@ from prediction.placement_predictor import predict_placement_actions
 from utils.state_manager import load_deployment_state, save_deployment_state
 from utils.fancy_logger import get_logger, log_action
 from dateutil.parser import isoparse  
+
 
 logger = get_logger(__name__)
 
@@ -96,18 +98,28 @@ def main():
     current_data = collect_region_traffic()
     logger.debug(f"Current traffic data: {current_data}")
     
-    print("Updating traffic history...")
+    logger.info("Updating traffic history...")
     history = update_traffic_history(current_data)
     
-    print("Retrieving current deployment regions...")
+    logger.info("Retrieving current deployment regions...")
     current_regions = get_current_regions()
     
-    print("Predicting placement actions...")
+    logger.info("Predicting placement actions...")
     regions_to_deploy, regions_to_remove = predict_placement_actions(history, current_regions)
     
-    print(f"Regions to deploy machines: {regions_to_deploy}")
-    print(f"Regions to remove machines: {regions_to_remove}")
+    logger.info(f"Regions to deploy machines: {regions_to_deploy}")
+    logger.info(f"Regions to remove machines: {regions_to_remove}")
     
-    print("Updating placements...")
+    logger.info("Updating placements...")
     update_placements(regions_to_deploy, regions_to_remove)
-    print("Update complete.")
+    logger.info("Update complete.")
+
+    result = {
+        "current_traffic": current_data,
+        "current_regions": current_regions,
+        "regions_to_deploy": regions_to_deploy,
+        "regions_to_remove": regions_to_remove,
+        "update_status": "complete"
+    }
+    
+    return json.dumps(result)
