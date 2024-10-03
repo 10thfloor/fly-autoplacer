@@ -1,7 +1,7 @@
 # Fly Auto-Placer
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 
 Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns. The goal is to seamlessly integrate this tool into your Fly deployments for optimal global performance.
 
