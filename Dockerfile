@@ -1,5 +1,5 @@
 # Use an official Python runtime as the base image
-FROM python:3.8-slim
+FROM python:3.9-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -48,7 +48,7 @@ RUN mkdir -p data logs
 ENV FLY_APP_NAME=your-fly-app-name
 
 # Expose ports if your application uses any (modify if necessary)
-# EXPOSE 8000
+EXPOSE 8000
 
 # Define the default command to run your application
-CMD ["python", "main.py"]
+CMD ["fastapi", "run", "main.py"]

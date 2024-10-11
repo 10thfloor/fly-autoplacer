@@ -1,17 +1,17 @@
 dry_run: true
-scale_up_threshold: 80
-scale_down_threshold: 20 
+scale_up_threshold: 50
+scale_down_threshold: 10 
 cooldown_period: 60  # Cooldown period in seconds, between scaling actions in the same region
-fly_app_name: "your-app-name"
 
 allowed_regions:
   - "ams"
-  - "fra"
   - "lhr"
+  - "sfo"
+  - "fra"
 
 excluded_regions:
-  - "sin"
   - "nrt"
+  - "sin"
 
 always_running_regions:
   - "iad"

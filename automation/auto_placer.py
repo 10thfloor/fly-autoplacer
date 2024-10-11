@@ -14,14 +14,13 @@ from utils.history_manager import update_traffic_history
 from prediction.placement_predictor import predict_placement_actions
 from utils.state_manager import load_deployment_state, save_deployment_state
 from utils.fancy_logger import get_logger, log_action
-from dateutil.parser import isoparse  
-
+from dateutil.parser import isoparse
+from utils.config_loader import Config
 
 logger = get_logger(__name__)
 
 # Load configuration
-with open('config.yaml', 'r') as f:
-    config = yaml.safe_load(f)
+config = Config.get_config()
 
 DRY_RUN = config['dry_run']
 COOLDOWN_PERIOD = int(config['cooldown_period'])  # Ensure this is an integer
@@ -29,6 +28,14 @@ COOLDOWN_PERIOD = int(config['cooldown_period'])  # Ensure this is an integer
 ALLOWED_REGIONS = config.get('allowed_regions', [])
 EXCLUDED_REGIONS = config.get('excluded_regions', [])
 ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
+
+FLY_APP_NAME = os.getenv("FLY_APP_NAME")
+
+# If it's a dry run, don't actually deploy or remove machines
+if DRY_RUN:
+    logger.info("Dry run mode is enabled. No changes will be applied.")
+    # set the app name to the current directory name
+    FLY_APP_NAME = os.path.basename(os.getcwd())
 
 def get_current_regions():
     deployment_state = load_deployment_state()
@@ -122,4 +129,4 @@ def main():
         "update_status": "complete"
     }
     
-    return json.dumps(result)
+    return result
