@@ -51,4 +51,4 @@ ENV FLY_APP_NAME=your-fly-app-name
 EXPOSE 8000
 
 # Define the default command to run your application
-CMD ["fastapi", "run", "main.py"]
+CMD ["poetry", "run", "python3", "main.py"]
