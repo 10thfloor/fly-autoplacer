@@ -4,11 +4,16 @@ import os
 import json
 import logging
 
-DEPLOYMENT_STATE_FILE = 'data/deployment_state.json'
-
 logger = logging.getLogger(__name__)
 
-def load_deployment_state():
+def get_deployment_state_file(dry_run=False):
+    if dry_run:
+        return 'data/deployment_state_dry_run.json'
+    else:
+        return 'data/deployment_state.json'
+
+def load_deployment_state(dry_run=False):
+    DEPLOYMENT_STATE_FILE = get_deployment_state_file(dry_run)
     if os.path.exists(DEPLOYMENT_STATE_FILE):
         try:
             with open(DEPLOYMENT_STATE_FILE, 'r') as f:
@@ -29,7 +34,8 @@ def load_deployment_state():
         logger.info("Deployment state file does not exist. Initializing with empty dict.")
         return {}
 
-def save_deployment_state(state):
+def save_deployment_state(state, dry_run=False):
+    DEPLOYMENT_STATE_FILE = get_deployment_state_file(dry_run)
     os.makedirs(os.path.dirname(DEPLOYMENT_STATE_FILE), exist_ok=True)
     with open(DEPLOYMENT_STATE_FILE, 'w') as f:
         json.dump(state, f, indent=2)

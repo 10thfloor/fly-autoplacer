@@ -4,10 +4,14 @@ import os
 import json
 from collections import defaultdict
 from utils.state_manager import load_deployment_state
+from utils.config_loader import Config
 
 TRAFFIC_LEVEL_WEIGHTS_DEPLOYED = [0.4, 0.4, 0.1, 0.1]
 TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED = [0.1, 0.1, 0.3, 0.5]
 MAX_HISTORY_ENTRIES = 5
+
+config = Config.get_config()
+DRY_RUN = config['dry_run']
 
 IP_REGION_MAP = {
     '203.0.113.5': 'cdg',
@@ -38,7 +42,7 @@ def get_recent_logs():
     
     for region in regions:
         # Assign probabilities to generate low traffic for deployed regions
-        if region in load_deployment_state():
+        if region in load_deployment_state(dry_run=DRY_RUN):
             # Deployed regions have higher chance of low traffic
             traffic_level = random.choices(
                 population=list(traffic_levels.keys()),

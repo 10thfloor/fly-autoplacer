@@ -95,6 +95,9 @@ async def run_server(host, port):
     config_watcher = threading.Thread(target=watch_config, args=(server,), daemon=True)
     config_watcher.start()
 
+    logger.info(f"Server started on {host}:{port}")
+    logger.info("Autoplacer running for App: ")
+
     # Run the server
     await server.serve()
 

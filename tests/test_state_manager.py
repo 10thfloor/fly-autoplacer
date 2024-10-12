@@ -2,6 +2,10 @@ import unittest
 from unittest.mock import mock_open, patch
 from utils.state_manager import load_deployment_state, save_deployment_state
 import json
+from utils.config_loader import Config
+
+config = Config.get_config()
+DRY_RUN = config['dry_run']
 
 class TestStateManager(unittest.TestCase):
     def test_load_deployment_state_dict_format(self):
@@ -10,7 +14,7 @@ class TestStateManager(unittest.TestCase):
         with patch('builtins.open', mock_open(read_data=mock_data)) as mocked_file:
             with patch('os.path.exists') as mocked_exists:
                 mocked_exists.return_value = True
-                state = load_deployment_state()
+                state = load_deployment_state(dry_run=DRY_RUN)
                 self.assertEqual(state, {'iad': '2024-10-01T08:30:00Z', 'cdg': None})
 
     def test_load_deployment_state_list_format(self):
@@ -19,13 +23,13 @@ class TestStateManager(unittest.TestCase):
         with patch('builtins.open', mock_open(read_data=mock_data)) as mocked_file:
             with patch('os.path.exists') as mocked_exists:
                 mocked_exists.return_value = True
-                state = load_deployment_state()
+                state = load_deployment_state(dry_run=DRY_RUN)
                 self.assertEqual(state, {'iad': None, 'cdg': None})
 
     def test_load_deployment_state_no_file(self):
         with patch('os.path.exists') as mocked_exists:
             mocked_exists.return_value = False
-            state = load_deployment_state()
+            state = load_deployment_state(dry_run=DRY_RUN)
             self.assertEqual(state, {})
 
     def test_save_deployment_state(self):

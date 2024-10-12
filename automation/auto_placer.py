@@ -38,67 +38,67 @@ if DRY_RUN:
     FLY_APP_NAME = os.path.basename(os.getcwd())
 
 def get_current_regions():
-    deployment_state = load_deployment_state()
-    current_regions = [region for region in deployment_state]
+    deployment_state = load_deployment_state(dry_run=DRY_RUN)
+    current_regions = list(deployment_state.keys())
     print(f"Current deployment regions: {current_regions}")
     return current_regions
 
 def update_placements(regions_to_deploy, regions_to_remove):
-    deployment_state = load_deployment_state()
+    current_state = load_deployment_state(dry_run=DRY_RUN)
+    updated_state = current_state.copy()
     now = datetime.utcnow()
 
     # Deploy machines
     for region in regions_to_deploy:
-        last_action_time_str = deployment_state.get(region)
-        if last_action_time_str:
-            last_action_time = isoparse(last_action_time_str)
-            elapsed_time = (now - last_action_time).total_seconds()
-            if elapsed_time < COOLDOWN_PERIOD:
-                remaining = int(COOLDOWN_PERIOD - elapsed_time)
-                logger.info(f"Skipping deployment to {region} due to cooldown period ({remaining} seconds remaining).")
-                continue
-        else:
-            elapsed_time = None  # No previous action
+        if region not in updated_state:
+            last_action_time_str = current_state.get(region)
+            if last_action_time_str:
+                last_action_time = isoparse(last_action_time_str)
+                elapsed_time = (now - last_action_time).total_seconds()
+                if elapsed_time < COOLDOWN_PERIOD:
+                    remaining = int(COOLDOWN_PERIOD - elapsed_time)
+                    logger.info(f"Skipping deployment to {region} due to cooldown period ({remaining} seconds remaining).")
+                    continue
+            else:
+                elapsed_time = None  # No previous action
 
-        log_action("deploy", region, DRY_RUN)
-        deployment_state[region] = now.isoformat()
-        save_deployment_state(deployment_state)
+            updated_state[region] = now.isoformat()
 
-        if DRY_RUN:
-            print(f"[DRY RUN] Would deploy machine to region: {region}")
-        else:
-            logger.info(f"Deploying machine to region: {region}")
-            subprocess.run(['bash', 'scripts/deploy_machine.sh', region, config.FLY_APP_NAME])
+            if DRY_RUN:
+                logger.info(f"[DRY RUN] Would deploy machine to region: {region}")
+            else:
+                logger.info(f"Deploying machine to region: {region}")
+                # deploy_machine(region)
 
     # Remove machines
     for region in regions_to_remove:
-        if region not in deployment_state:
-            continue  # Not deployed
-
-        if region in ALWAYS_RUNNING_REGIONS:
-            logger.info(f"Skipping removal of always running region: {region}")
-            continue
-
-        last_action_time_str = deployment_state.get(region)
-        if last_action_time_str:
-            last_action_time = isoparse(last_action_time_str)
-            elapsed_time = (now - last_action_time).total_seconds()
-            if elapsed_time < COOLDOWN_PERIOD:
-                remaining = int(COOLDOWN_PERIOD - elapsed_time)
-                logger.info(f"Skipping removal from {region} due to cooldown period ({remaining} seconds remaining).")
+        if region in updated_state:
+            if region in ALWAYS_RUNNING_REGIONS:
+                logger.info(f"Skipping removal of always running region: {region}")
                 continue
-        else:
-            elapsed_time = None  # No previous action
 
-        log_action("remove", region, DRY_RUN)
-        del deployment_state[region]
-        save_deployment_state(deployment_state)
+            last_action_time_str = current_state.get(region)
+            if last_action_time_str:
+                last_action_time = isoparse(last_action_time_str)
+                elapsed_time = (now - last_action_time).total_seconds()
+                if elapsed_time < COOLDOWN_PERIOD:
+                    remaining = int(COOLDOWN_PERIOD - elapsed_time)
+                    logger.info(f"Skipping removal from {region} due to cooldown period ({remaining} seconds remaining).")
+                    continue
+            else:
+                elapsed_time = None  # No previous action
 
-        if DRY_RUN:
-            print(f"[DRY RUN] Would remove machine from region: {region}")
-        else:
-            logger.info(f"Removing machine from region: {region}")
-            subprocess.run(['bash', 'scripts/remove_machine.sh', region, config.FLY_APP_NAME])
+            log_action("remove", region, DRY_RUN)
+            del updated_state[region]
+
+            if DRY_RUN:
+                logger.info(f"[DRY RUN] Would remove machine from region: {region}")
+            else:
+                logger.info(f"Removing machine from region: {region}")
+                # remove_machine(region)
+
+    save_deployment_state(updated_state, dry_run=DRY_RUN)
+    return list(updated_state.keys())
 
 def main():
     logger.info("Collecting current traffic data...")
@@ -106,27 +106,31 @@ def main():
     logger.debug(f"Current traffic data: {current_data}")
     
     logger.info("Updating traffic history...")
-    history = update_traffic_history(current_data)
+    update_traffic_history(current_data)
     
     logger.info("Retrieving current deployment regions...")
-    current_regions = get_current_regions()
+    current_state = load_deployment_state(dry_run=DRY_RUN)
+    current_regions = list(current_state.keys())
+    logger.info(f"Current deployment regions: {current_regions}")
     
     logger.info("Predicting placement actions...")
-    regions_to_deploy, regions_to_remove = predict_placement_actions(history, current_regions)
+    regions_to_deploy, regions_to_remove = predict_placement_actions(current_data, current_regions)
     
     logger.info(f"Regions to deploy machines: {regions_to_deploy}")
     logger.info(f"Regions to remove machines: {regions_to_remove}")
     
     logger.info("Updating placements...")
-    update_placements(regions_to_deploy, regions_to_remove)
-    logger.info("Update complete.")
-
+    current_regions = update_placements(regions_to_deploy, regions_to_remove)
+    logger.info(f"Update complete. Deployment state: {current_regions}")
+    
+    # Prepare the result data with updated current_regions
     result = {
-        "current_traffic": current_data,
-        "current_regions": current_regions,
+        "current_regions": list(current_state.keys()),
         "regions_to_deploy": regions_to_deploy,
         "regions_to_remove": regions_to_remove,
-        "update_status": "complete"
+        "dry_run": DRY_RUN,
+        "status": "Success"
     }
     
+    logger.info("Auto-placer execution completed")
     return result

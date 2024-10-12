@@ -18,14 +18,15 @@ ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
 
 TRAFFIC_HISTORY_FILE = 'data/traffic_history.json'
 
-def predict_placement_actions(history, current_regions):
+def predict_placement_actions(current_traffic, current_regions):
+    
     # Calculate average traffic per region
     region_totals = defaultdict(int)
     region_counts = defaultdict(int)
-    for data in history.values():
-        for region, count in data.items():
-            region_totals[region] += count
-            region_counts[region] += 1
+
+    for region, count in current_traffic.items():
+        region_totals[region] += count
+        region_counts[region] += 1
     
     average_traffic = {
         region: region_totals[region] / region_counts[region]
@@ -38,15 +39,15 @@ def predict_placement_actions(history, current_regions):
         region for region, avg in average_traffic.items()
         if (
             avg > SCALE_UP_THRESHOLD
-            and region not in current_regions
             and region not in EXCLUDED_REGIONS
             and (not ALLOWED_REGIONS or region in ALLOWED_REGIONS)
+            and region not in current_regions
         )
     ]
 
     # Ensure always running regions are deployed
     for region in ALWAYS_RUNNING_REGIONS:
-        if region not in current_regions:
+        if region not in current_regions and region not in regions_to_deploy:
             regions_to_deploy.append(region)
 
     # Remove regions based on traffic and config
