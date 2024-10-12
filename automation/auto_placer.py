@@ -17,6 +17,7 @@ from utils.fancy_logger import get_logger, log_action
 from dateutil.parser import isoparse
 from utils.config_loader import Config
 from logging.handlers import RotatingFileHandler
+from utils.metrics_fetcher import MetricsFetcher
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -161,10 +162,13 @@ def update_placements(regions_to_deploy, regions_to_remove):
     return list(updated_state.keys()), action_results
 
 def main():
-    logger.info("Starting auto-placer execution")
-    logger.info("Collecting current traffic data...")
+    metrics_fetcher = MetricsFetcher()
+    app_name = metrics_fetcher.get_app_name()
+    
+    logger.info(f"Starting auto-placer execution for app: {app_name}")
+    logger.info(f"Collecting current traffic data for app: {app_name}...")
     current_data = collect_region_traffic()
-    logger.debug(f"Current traffic data: {current_data}")
+    logger.debug(f"Current traffic data for app {app_name}: {current_data}")
     
     logger.info("Updating traffic history...")
     update_traffic_history(current_data)

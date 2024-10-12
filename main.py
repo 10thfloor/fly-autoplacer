@@ -3,7 +3,7 @@ import sys
 import threading
 import time
 import asyncio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +12,7 @@ import json
 from automation import auto_placer
 from utils.config_loader import Config
 import uvicorn
+from utils.metrics_fetcher import MetricsFetcher
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +37,12 @@ def watch_config(server):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Perform startup operations
+    config = Config.get_config()
+    if not config['dry_run']:
+        if not os.environ.get('FLY_APP_NAME'):
+            raise ValueError("FLY_APP_NAME environment variable is not set. This is required when not in dry run mode.")
+    
     logger.info("Application startup complete")
     yield
     logger.info("Application shutdown complete")
