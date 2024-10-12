@@ -27,6 +27,27 @@ curl -X POST http://localhost:8000/trigger
 This will trigger the auto-placer service and return the current deployment state. <br/>
 You can run this multiple times to see the **adaptive thresholds** in action.
 
+## Table of Contents
+
+- [Fly Auto-Placer](#fly-auto-placer)
+  - [How to use this service](#how-to-use-this-service)
+    - [In another terminal:](#in-another-terminal)
+  - [Placement Logic](#placement-logic)
+  - [Run in Docker](#run-in-docker)
+  - [Features](#features)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+    - [1. Environment Variables](#1-environment-variables)
+    - [2. Application Configuration](#2-application-configuration)
+    - [3. Fly.io API Token](#3-flyio-api-token)
+    - [4. Prometheus Metrics Setup](#4-prometheus-metrics-setup)
+    - [5. Required Tools](#5-required-tools)
+  - [Usage (Dev Only)](#usage-dev-only)
+  - [Understanding the Output](#understanding-the-output)
+  - [Roadmap](#roadmap)
+  - [Troubleshooting](#troubleshooting)
+  - [License](#license)
 
 ## Placement Logic
 
