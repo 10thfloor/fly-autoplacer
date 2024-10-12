@@ -7,13 +7,19 @@ import random
 from utils.config_loader import Config
 from utils.state_manager import load_deployment_state
 from utils import mock_traffic_generator
+from utils.fancy_logger import get_logger
+
+# Load configuration
+config = Config.get_config()
+
+# Set up logging
+logger = get_logger(__name__)
 
 class MetricsFetcher:
 
     def __init__(self, dry_run=None):
         load_dotenv()
-        self.config = Config.get_config()
-        self.dry_run = dry_run if dry_run is not None else self.config['dry_run']
+        self.dry_run = dry_run if dry_run is not None else config['dry_run']
         
         self.api_url = os.environ.get('FLY_PROMETHEUS_URL')
         self.api_token = os.environ.get('FLY_API_TOKEN')

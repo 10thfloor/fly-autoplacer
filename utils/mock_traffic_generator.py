@@ -1,7 +1,11 @@
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from utils.state_manager import load_deployment_state
 from utils.history_manager import update_traffic_history
+from utils.fancy_logger import get_logger
+
+# Set up logging
+logger = get_logger(__name__)
 
 MOCK_IP_REGION_MAP = {
     '203.0.113.5': 'cdg',
@@ -31,7 +35,7 @@ def generate_mock_logs(dry_run):
     Generate mock recent logs simulating traffic across different regions.
     """
     mock_logs = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     mock_current_state = load_deployment_state(dry_run)
     current_traffic = {}
@@ -58,7 +62,6 @@ def generate_mock_logs(dry_run):
             mock_timestamp = now - timedelta(seconds=random.randint(0, 300))
             mock_logs.append({'ip': mock_ip, 'timestamp': mock_timestamp.isoformat()})
     
-    # Update traffic history
     update_traffic_history(current_traffic, dry_run)
     
     return mock_logs

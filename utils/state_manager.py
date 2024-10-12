@@ -2,10 +2,10 @@
 
 import os
 import json
-import logging
-from datetime import datetime
+from utils.fancy_logger import get_logger
 
-logger = logging.getLogger(__name__)
+# Set up logging
+logger = get_logger(__name__)
 
 def get_deployment_state_file(dry_run=False):
     return 'data/deployment_state_dry_run.json' if dry_run else 'data/deployment_state.json'
@@ -45,4 +45,3 @@ def save_deployment_state(state, dry_run=False):
     except Exception as e:
         logger.error(f"Error saving deployment state: {e}")
         raise
-

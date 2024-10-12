@@ -4,18 +4,18 @@ from collections import defaultdict
 import os
 import yaml
 import logging
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+from utils.config_loader import Config
+from utils.fancy_logger import get_logger
 
 # Load configuration
-with open('config.yaml', 'r') as f:
-    config = yaml.safe_load(f)
+config = Config.get_config()
 
-# Ensure thresholds are integers
+# Set up logging
+logger = get_logger(__name__)
+
+# Global constants
 SCALE_UP_THRESHOLD = int(config['scale_up_threshold'])
 SCALE_DOWN_THRESHOLD = int(config['scale_down_threshold'])
-
 ALLOWED_REGIONS = config.get('allowed_regions', [])
 EXCLUDED_REGIONS = config.get('excluded_regions', [])
 ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])

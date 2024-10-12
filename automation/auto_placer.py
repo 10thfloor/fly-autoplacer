@@ -19,9 +19,11 @@ from utils.config_loader import Config
 from logging.handlers import RotatingFileHandler
 from utils.metrics_fetcher import MetricsFetcher
 
+# Load configuration
+config = Config.get_config()
+
 # Set up logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = get_logger(__name__)
 
 # Create logs directory if it doesn't exist
 os.makedirs('logs', exist_ok=True)
@@ -47,12 +49,8 @@ file_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
-# Load configuration
-config = Config.get_config()
-
 DRY_RUN = config['dry_run']
-COOLDOWN_PERIOD = int(config['cooldown_period'])  # Ensure this is an integer
-
+COOLDOWN_PERIOD = int(config['cooldown_period'])
 ALLOWED_REGIONS = config.get('allowed_regions', [])
 EXCLUDED_REGIONS = config.get('excluded_regions', [])
 ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
@@ -162,9 +160,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
     return list(updated_state.keys()), action_results
 
 def main():
-    config = Config.get_config()
-    dry_run = config['dry_run']
-    metrics_fetcher = MetricsFetcher(dry_run=dry_run)
+    metrics_fetcher = MetricsFetcher(dry_run=DRY_RUN)
     app_name = metrics_fetcher.get_app_name()
     
     logger.info(f"Starting auto-placer execution for app: {app_name}")
@@ -173,7 +169,7 @@ def main():
     logger.debug(f"Current traffic data for app {app_name}: {current_data}")
     
     logger.info("Updating traffic history...")
-    update_traffic_history(current_data, dry_run)
+    update_traffic_history(current_data, dry_run=DRY_RUN)
     
     logger.info("Retrieving current deployment regions...")
     current_state = load_deployment_state(dry_run=DRY_RUN)
