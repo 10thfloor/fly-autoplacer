@@ -31,7 +31,6 @@ You can run this multiple times to see the **adaptive thresholds** in action.
 
 - [Fly Auto-Placer](#fly-auto-placer)
   - [How to use this service](#how-to-use-this-service)
-    - [In another terminal:](#in-another-terminal)
   - [Placement Logic](#placement-logic)
   - [Run in Docker](#run-in-docker)
   - [Features](#features)
@@ -43,7 +42,7 @@ You can run this multiple times to see the **adaptive thresholds** in action.
     - [3. Fly.io API Token](#3-flyio-api-token)
     - [4. Prometheus Metrics Setup](#4-prometheus-metrics-setup)
     - [5. Required Tools](#5-required-tools)
-  - [Usage (Dev Only)](#usage-dev-only)
+  - [Usage](#usage)
   - [Understanding the Output](#understanding-the-output)
   - [Roadmap](#roadmap)
   - [Troubleshooting](#troubleshooting)
@@ -182,7 +181,9 @@ always_running_regions:
   curl -L https://fly.io/install.sh | sh
   ```
 
-## Usage (Dev Only)
+## Usage
+
+Currently only works in dry-run mode. Won't make any changes to your Fly.io application.
 
 1. **Run the Auto-Placer Service**:
 
