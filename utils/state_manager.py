@@ -12,29 +12,37 @@ def get_deployment_state_file(dry_run=False):
 
 def load_deployment_state(dry_run=False):
     state_file = get_deployment_state_file(dry_run)
+    logger.info(f"Loading deployment state from {state_file} (dry_run: {dry_run})")
     if os.path.exists(state_file):
-        with open(state_file, 'r') as f:
-            return json.load(f)
+        try:
+            with open(state_file, 'r') as f:
+                content = f.read().strip()
+                if content:
+                    data = json.loads(content)
+                    logger.info(f"Loaded deployment state with {len(data)} entries")
+                    logger.debug(f"Deployment state: {data}")
+                    return data
+                else:
+                    logger.warning("Deployment state file is empty. Returning empty dict.")
+                    return {}
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in deployment state file: {e}")
+        except Exception as e:
+            logger.error(f"Error reading deployment state file: {e}")
+    else:
+        logger.info("Deployment state file does not exist. Returning empty dict.")
     return {}
 
 def save_deployment_state(state, dry_run=False):
     state_file = get_deployment_state_file(dry_run)
-    with open(state_file, 'w') as f:
-        json.dump(state, f, indent=2)
+    logger.info(f"Saving deployment state to {state_file} (dry_run: {dry_run})")
+    try:
+        os.makedirs(os.path.dirname(state_file), exist_ok=True)
+        with open(state_file, 'w') as f:
+            json.dump(state, f, indent=2)
+        logger.info(f"Deployment state saved with {len(state)} entries")
+        logger.debug(f"Saved deployment state: {state}")
+    except Exception as e:
+        logger.error(f"Error saving deployment state: {e}")
+        raise
 
-def get_traffic_history_file(dry_run=False):
-    return 'data/traffic_history_dry_run.json' if dry_run else 'data/traffic_history.json'
-
-def load_traffic_history(dry_run=False):
-    history_file = get_traffic_history_file(dry_run)
-    if os.path.exists(history_file):
-        with open(history_file, 'r') as f:
-            history = json.load(f)
-            return {datetime.fromisoformat(k): v for k, v in history.items()}
-    return {}
-
-def save_traffic_history(history, dry_run=False):
-    history_file = get_traffic_history_file(dry_run)
-    serializable_history = {k.isoformat(): v for k, v in history.items()}
-    with open(history_file, 'w') as f:
-        json.dump(serializable_history, f, indent=2)
