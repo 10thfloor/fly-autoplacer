@@ -47,6 +47,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
     current_state = load_deployment_state(dry_run=DRY_RUN)
     updated_state = current_state.copy()
     now = datetime.utcnow()
+    action_results = {"deployed": [], "removed": [], "skipped": []}
 
     # Deploy machines
     for region in regions_to_deploy:
@@ -57,10 +58,28 @@ def update_placements(regions_to_deploy, regions_to_remove):
                 elapsed_time = (now - last_action_time).total_seconds()
                 if elapsed_time < COOLDOWN_PERIOD:
                     remaining = int(COOLDOWN_PERIOD - elapsed_time)
-                    logger.info(f"Skipping deployment to {region} due to cooldown period ({remaining} seconds remaining).")
+                    action_results["skipped"].append({
+                        "region": region,
+                        "action": "deploy",
+                        "reason": f"Cooldown period ({remaining} seconds remaining)"
+                    })
                     continue
-            else:
-                elapsed_time = None  # No previous action
+            
+            if region in EXCLUDED_REGIONS:
+                action_results["skipped"].append({
+                    "region": region,
+                    "action": "deploy",
+                    "reason": "Region is in excluded_regions list"
+                })
+                continue
+            
+            if ALLOWED_REGIONS and region not in ALLOWED_REGIONS:
+                action_results["skipped"].append({
+                    "region": region,
+                    "action": "deploy",
+                    "reason": "Region is not in allowed_regions list"
+                })
+                continue
 
             updated_state[region] = now.isoformat()
 
@@ -69,12 +88,18 @@ def update_placements(regions_to_deploy, regions_to_remove):
             else:
                 logger.info(f"Deploying machine to region: {region}")
                 # deploy_machine(region)
+            
+            action_results["deployed"].append(region)
 
     # Remove machines
     for region in regions_to_remove:
         if region in updated_state:
             if region in ALWAYS_RUNNING_REGIONS:
-                logger.info(f"Skipping removal of always running region: {region}")
+                action_results["skipped"].append({
+                    "region": region,
+                    "action": "remove",
+                    "reason": "Region is in always_running_regions list"
+                })
                 continue
 
             last_action_time_str = current_state.get(region)
@@ -83,10 +108,12 @@ def update_placements(regions_to_deploy, regions_to_remove):
                 elapsed_time = (now - last_action_time).total_seconds()
                 if elapsed_time < COOLDOWN_PERIOD:
                     remaining = int(COOLDOWN_PERIOD - elapsed_time)
-                    logger.info(f"Skipping removal from {region} due to cooldown period ({remaining} seconds remaining).")
+                    action_results["skipped"].append({
+                        "region": region,
+                        "action": "remove",
+                        "reason": f"Cooldown period ({remaining} seconds remaining)"
+                    })
                     continue
-            else:
-                elapsed_time = None  # No previous action
 
             log_action("remove", region, DRY_RUN)
             del updated_state[region]
@@ -96,9 +123,11 @@ def update_placements(regions_to_deploy, regions_to_remove):
             else:
                 logger.info(f"Removing machine from region: {region}")
                 # remove_machine(region)
+            
+            action_results["removed"].append(region)
 
     save_deployment_state(updated_state, dry_run=DRY_RUN)
-    return list(updated_state.keys())
+    return list(updated_state.keys()), action_results
 
 def main():
     logger.info("Collecting current traffic data...")
@@ -120,14 +149,13 @@ def main():
     logger.info(f"Regions to remove machines: {regions_to_remove}")
     
     logger.info("Updating placements...")
-    current_regions = update_placements(regions_to_deploy, regions_to_remove)
+    current_regions, action_results = update_placements(regions_to_deploy, regions_to_remove)
     logger.info(f"Update complete. Deployment state: {current_regions}")
     
-    # Prepare the result data with updated current_regions
+    # Prepare the result data with updated current_regions and action_results
     result = {
-        "current_regions": list(current_state.keys()),
-        "regions_to_deploy": regions_to_deploy,
-        "regions_to_remove": regions_to_remove,
+        "current_regions": current_regions,
+        "action_results": action_results,
         "dry_run": DRY_RUN,
         "status": "Success"
     }
