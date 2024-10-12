@@ -7,6 +7,35 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
 
 **Note:** This project is currently a work in progress (POC).
 
+
+## How to use this service
+
+```bash
+poetry install
+poetry run python3 main.py
+```
+
+This will start the auto-placer service in dry-run mode using the default config in `config/config.yml`.
+**Currently, the service will not make any changes to your Fly.io application.**
+
+#### In another terminal:
+
+```bash
+curl -X POST http://localhost:8000/trigger
+```
+
+This will trigger the auto-placer service and return the current deployment state.
+You can run this multiple times to see the **adaptive thresholds** in action.
+
+
+## Placement Logic
+
+The auto-placer uses a combination of short-term and long-term average traffic to make placement decisions, as well as a "COOLDOWN" period to prevent rapid re-deployment of regions. 
+
+These settings can be adjusted in the `config/config.yml` file.
+
+---
+
 ## Features
 
 - **Dynamic Region Placement**: Automatically deploys or removes machines in regions based on real-time traffic.
@@ -15,26 +44,6 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
 - **Prometheus API Integration**: Connects directly to Fly.io's Prometheus API for up-to-date metrics.
 - **Dry Run Mode**: Test the scaling logic without affecting actual deployments.
 - **Historical Data Storage**: Keeps a history of traffic data for better scaling decisions.
-
-## Table of Contents
-
-- [Fly Auto-Placer](#fly-auto-placer)
-  - [Features](#features)
-  - [Table of Contents](#table-of-contents)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-    - [1. Environment Variables](#1-environment-variables)
-    - [2. Application Configuration](#2-application-configuration)
-    - [3. Fly.io API Token](#3-flyio-api-token)
-    - [4. Prometheus Metrics Setup](#4-prometheus-metrics-setup)
-    - [5. Required Tools](#5-required-tools)
-  - [Usage](#usage)
-  - [Understanding the Output](#understanding-the-output)
-    - [Example Traffic Data](#example-traffic-data)
-  - [Roadmap](#roadmap)
-  - [Troubleshooting](#troubleshooting)
-  - [License](#license)
 
 ## Prerequisites
 
@@ -84,35 +93,41 @@ FLY_APP_NAME=your_fly_app_name
 Create a `config.yaml` file in the project root with the following variables:
 
 ```yaml
-dry_run: true
-traffic_threshold: 50
-deployment_threshold: 30
-cooldown_period: 300  # in seconds
+# Configuration settings for the auto-placer
 
+dry_run: True
+
+# Cooldown period to prevent rapid re-deployment
+# Used as a safeguard to prevent rapid re-deployment of regions when traffic
+# exceeds the adaptive threshold settings.
+cooldown_period: 10  # Cooldown period in seconds
+
+# Define parameters for calculating short-term and long-term traffic averages
+# These parameters are used to analyze recent trends and overall patterns in traffic data
+short_term_window: 5  # Number of recent data points to consider for short-term analysis
+long_term_window: 20  # Number of data points to consider for long-term analysis
+alpha_short: 0.3  # Exponential smoothing factor for short-term average (higher weight to recent data)
+alpha_long: 0.1  # Exponential smoothing factor for long-term average (more stable, less reactive)
+
+# Thresholds for traffic-based placement decisions
+traffic_threshold: 50         # Deploy to regions with average traffic >= 50
+deployment_threshold: 10      # Remove from regions with average traffic <= 10
+
+# Optional: Define allowed or excluded regions
 allowed_regions:
-  - "ams"
-  - "fra"
-  - "lhr"
+  - iad
+  - cdg
+  - lhr
+  - fra
+  - sfo
 
 excluded_regions:
-  - "sin"
-  - "nrt"
+  - nrt
 
 always_running_regions:
-  - "iad"
-  - "cdg"
+  - fra
+
 ```
-
-**Options**
-
-- `dry_run`: If `true`, the script will not make any changes to the Fly.io API.
-- `traffic_threshold`: The traffic count that triggers a scale-up action.
-- `deployment_threshold`: The traffic count that triggers a scale-down action.
-- `cooldown_period`: The number of seconds to wait before allowing another action in the same region.
-- `fly_app_name`: The name of your Fly.io application.
-- `allowed_regions`: A list of regions to allow deployment to.
-- `excluded_regions`: A list of regions to exclude from deployment.
-- `always_running_regions`: A list of regions to always keep running.
 
 ### 3. Fly.io API Token
 
@@ -133,13 +148,16 @@ always_running_regions:
   curl -L https://fly.io/install.sh | sh
   ```
 
-## Usage
+## Usage (Dev Only)
 
-1. **Run the Script**:
+1. **Run the Auto-Placer Service**:
 
    ```bash
-   fastapi dev main.py
+   poetry run python3 main.py
    ```
+
+   This will start the auto-placer service in dry-run mode using the default config in `config/config.yml`.
+   **Currently, the service will not make any changes to your Fly.io application.**
 
 2. **Monitor Logs**:
 
@@ -147,42 +165,84 @@ always_running_regions:
 
 3. **View Current Deployments**:
 
-   The deployment state is saved in `data/deployment_state.json`.
+   The deployment state is saved in `data/deployment_state_dry_run.json`.
 
 ## Understanding the Output
 
-- **Deployment Actions**: The script logs when it deploys or removes machines in regions.
-- **Traffic Data**: Aggregated traffic data per region is stored in `data/traffic_history.json`.
-- **Logs**: Detailed logs are available in the `logs` directory.
-
-### Example Traffic Data
+Here is some example output from the auto-placer:
 
 ```json
 {
-  "2024-10-01T16:03:42.269830": {
-    "cdg": 26,
-    "ams": 37,
-    "sin": 47,
-    "nrt": 74,
-    "lhr": 51
-  },
-  "2024-10-01T16:03:36.870259": {
-    "cdg": 28,
-    "ams": 42,
-    "iad": 12,
-    "sin": 80,
-    "nrt": 91,
-    "lhr": 67
-  }
+    "deployed": [],
+    "removed": [],
+    "skipped": [
+        {
+            "region": "cdg",
+            "action": "none",
+            "reason": "Traffic does not meet adaptive thresholds. Current avg: 36.65, Long-term avg: 39.29"
+        },
+        {
+            "region": "ams",
+            "action": "deploy",
+            "reason": "Region is not in allowed_regions list"
+        },
+        {
+            "region": "iad",
+            "action": "none",
+            "reason": "Traffic does not meet adaptive thresholds. Current avg: 30.26, Long-term avg: 37.77"
+        },
+        {
+            "region": "sin",
+            "action": "deploy",
+            "reason": "Region is not in allowed_regions list"
+        },
+        {
+            "region": "nrt",
+            "action": "deploy",
+            "reason": "Region is in excluded_regions list"
+        },
+        {
+            "region": "lhr",
+            "action": "none",
+            "reason": "Traffic does not meet adaptive thresholds. Current avg: 43.11, Long-term avg: 21.10"
+        },
+        {
+            "region": "fra",
+            "action": "none",
+            "reason": "Traffic does not meet adaptive thresholds. Current avg: 19.12, Long-term avg: 38.01"
+        },
+        {
+            "region": "sfo",
+            "action": "none",
+            "reason": "Traffic does not meet adaptive thresholds. Current avg: 27.22, Long-term avg: 35.91"
+        }
+    ],
+    "current_deployment": [
+        "fra",
+        "iad",
+        "lhr",
+        "cdg"
+    ],
+    "updated_deployment": [
+        "fra",
+        "iad",
+        "lhr",
+        "cdg"
+    ]
 }
 ```
+
+The `deployed` and `removed` lists show the regions that were deployed or removed.
+The `skipped` list shows the regions that were skipped due to not meeting the adaptive thresholds or being in the excluded regions list. 
+The `current_deployment` and `updated_deployment` lists show the current and updated deployment state respectively.
+
+**Note: This is dry-run output. No changes will be made to your Fly.io application.**
 
 ## Roadmap
 
 - **Advanced Traffic Forecasting**: Implement time-series forecasting models for better scaling decisions.
 - **Real-Time Monitoring**: Integrate with monitoring tools like Prometheus and Grafana.
 - **Improved State Management**: Utilize distributed key-value stores like etcd or Consul.
-- **Containerization**: Dockerize the application for easier deployment.
 - **Autoscaling Integration**: Explore Fly.io's built-in autoscaling capabilities.
 
 ## Troubleshooting
