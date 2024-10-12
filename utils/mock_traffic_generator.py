@@ -3,9 +3,14 @@ from datetime import datetime, timedelta, timezone
 from utils.state_manager import load_deployment_state
 from utils.history_manager import update_traffic_history
 from utils.fancy_logger import get_logger
+from utils.config_loader import Config
 
 # Set up logging
 logger = get_logger(__name__)
+
+config = Config.get_config()
+TRAFFIC_THRESHOLD = config['traffic_threshold']
+DEPLOYMENT_THRESHOLD = config['deployment_threshold']
 
 MOCK_IP_REGION_MAP = {
     '203.0.113.5': 'cdg',
@@ -14,6 +19,8 @@ MOCK_IP_REGION_MAP = {
     '192.0.2.45': 'sin',
     '198.51.100.45': 'nrt',
     '198.51.100.55': 'lhr',
+    '198.51.100.65': 'fra',
+    '198.51.100.75': 'sfo',
 }
 
 MOCK_TRAFFIC_LEVEL_RANGES = {
@@ -67,21 +74,36 @@ def generate_mock_logs(dry_run):
     return mock_logs
 
 def generate_mock_traffic_data(mock_logs):
-    """
-    Generate mock traffic data from mock logs.
-
-    Args:
-        mock_logs (list): List of mock log entries.
-
-    Returns:
-        dict: A dictionary with regions as keys and request counts as values.
-    """
-    mock_traffic_data = {}
-    for log in mock_logs:
-        region = MOCK_IP_REGION_MAP.get(log['ip'])
-        if region:
-            mock_traffic_data[region] = mock_traffic_data.get(region, 0) + 1
-    return mock_traffic_data
+    current_deployments = load_deployment_state(dry_run=True)
+    traffic_data = {region: 0 for region in MOCK_IP_REGION_MAP.values()}
+    
+    # Generate base traffic
+    for region in traffic_data:
+        if region in current_deployments:
+            # Higher base traffic for deployed regions
+            traffic_data[region] = random.randint(DEPLOYMENT_THRESHOLD, TRAFFIC_THRESHOLD)
+        else:
+            # Lower base traffic for non-deployed regions
+            traffic_data[region] = random.randint(0, TRAFFIC_THRESHOLD - 1)
+    
+    # Add random spikes to some regions
+    for _ in range(random.randint(1, 3)):
+        region = random.choice(list(traffic_data.keys()))
+        traffic_data[region] += random.randint(TRAFFIC_THRESHOLD // 2, TRAFFIC_THRESHOLD * 2)
+    
+    # Ensure at least one region crosses the deployment threshold
+    if all(traffic < TRAFFIC_THRESHOLD for traffic in traffic_data.values()):
+        region_to_spike = random.choice(list(traffic_data.keys()))
+        traffic_data[region_to_spike] = TRAFFIC_THRESHOLD + random.randint(1, 20)
+    
+    # Ensure at least one deployed region falls below the deployment threshold
+    deployed_regions = [region for region in current_deployments if region in traffic_data]
+    if deployed_regions:
+        region_to_drop = random.choice(deployed_regions)
+        traffic_data[region_to_drop] = max(0, DEPLOYMENT_THRESHOLD - random.randint(1, 10))
+    
+    logger.info(f"Generated mock traffic data: {traffic_data}")
+    return traffic_data
 
 def get_mock_region(ip):
     """

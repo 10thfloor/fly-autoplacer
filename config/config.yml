@@ -1,0 +1,33 @@
+# Configuration settings for the auto-placer
+
+dry_run: True
+
+# Cooldown period to prevent rapid re-deployment
+# Used as a safeguard to prevent rapid re-deployment of regions when traffic
+# exceeds the adaptive threshold settings.
+cooldown_period: 10  # Cooldown period in seconds
+
+# Define parameters for calculating short-term and long-term traffic averages
+# These parameters are used to analyze recent trends and overall patterns in traffic data
+short_term_window: 5  # Number of recent data points to consider for short-term analysis
+long_term_window: 20  # Number of data points to consider for long-term analysis
+alpha_short: 0.3  # Exponential smoothing factor for short-term average (higher weight to recent data)
+alpha_long: 0.1  # Exponential smoothing factor for long-term average (more stable, less reactive)
+
+# Thresholds for traffic-based placement decisions
+traffic_threshold: 50         # Deploy to regions with average traffic >= 50
+deployment_threshold: 10      # Remove from regions with average traffic <= 10
+
+# Optional: Define allowed or excluded regions
+allowed_regions:
+  - iad
+  - cdg
+  - lhr
+  - fra
+  - sfo
+
+excluded_regions:
+  - nrt
+
+always_running_regions:
+  - fra

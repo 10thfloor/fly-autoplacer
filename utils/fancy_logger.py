@@ -11,4 +11,6 @@ def log_action(action, region, dry_run):
         logging.info(f"{action.capitalize()} in region: {region}")
 
 def get_logger(name):
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    return logger

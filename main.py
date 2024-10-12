@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def watch_config(server):
-    config_filepath = 'config.yaml'
+    config_filepath = os.path.join('config', 'config.yml')
     last_mtime = os.path.getmtime(config_filepath)
     while not server.should_exit:
         time.sleep(1)  # Check every second

@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from automation.auto_placer import update_placements
 
 class TestCooldownPeriod(unittest.TestCase):
@@ -8,7 +8,7 @@ class TestCooldownPeriod(unittest.TestCase):
     @patch('automation.auto_placer.save_deployment_state')
     @patch('automation.auto_placer.subprocess.run')
     def test_deploy_within_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         region = 'ams'
         # Mock the configuration
         with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
@@ -27,7 +27,7 @@ class TestCooldownPeriod(unittest.TestCase):
     @patch('automation.auto_placer.save_deployment_state')
     @patch('automation.auto_placer.subprocess.run')
     def test_deploy_after_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         region = 'ams'
         with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
             # Mock deployment state with action outside cooldown
@@ -45,7 +45,7 @@ class TestCooldownPeriod(unittest.TestCase):
     @patch('automation.auto_placer.save_deployment_state')
     @patch('automation.auto_placer.subprocess.run')
     def test_remove_within_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         region = 'iad'
         with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
             # Mock deployment state with recent action
@@ -63,7 +63,7 @@ class TestCooldownPeriod(unittest.TestCase):
     @patch('automation.auto_placer.save_deployment_state')
     @patch('automation.auto_placer.subprocess.run')
     def test_remove_after_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         region = 'iad'
         with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
             with patch('automation.auto_placer.ALWAYS_RUNNING_REGIONS', []):

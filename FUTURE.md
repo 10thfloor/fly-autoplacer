@@ -70,9 +70,9 @@ It's a decent start, but I've noticed some issues:
        recent_data = historical_data[-window_size:]
        mean = np.mean(recent_data)
        std_dev = np.std(recent_data)
-       scale_up_threshold = mean + 2 * std_dev
-       scale_down_threshold = mean - std_dev
-       return scale_up_threshold, scale_down_threshold
+       traffic_threshold = mean + 2 * std_dev
+       deployment_threshold = mean - std_dev
+       return traffic_threshold, deployment_threshold
    ```
 
 6. **Better state management**

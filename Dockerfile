@@ -28,10 +28,10 @@ COPY automation/ automation/
 COPY utils/ utils/
 COPY monitoring/ monitoring/
 COPY prediction/ prediction/
+COPY config/ config/
 
 # Copy other files we need
 COPY scripts/ scripts/
-COPY config.yaml .
 COPY data/ data/
 COPY README.md .
 

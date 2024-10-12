@@ -12,7 +12,7 @@ class TestAutoPlacer(unittest.TestCase):
         regions_to_remove = ['iad']
 
         # Mock current time
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Mock deployment state with timestamps
         mock_load_state.return_value = {'iad': now.isoformat()}

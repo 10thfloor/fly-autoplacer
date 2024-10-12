@@ -1,7 +1,7 @@
 # Fly Auto-Placer
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
 Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns. The goal is to seamlessly integrate this tool into your Fly deployments for optimal global performance.
 
@@ -38,7 +38,7 @@ Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly
 
 ## Prerequisites
 
-- **Python 3.9+**
+- **Python 3.10+**
 - **Fly.io Account**: Ensure you have access to your application's metrics.
 - **Fly.io API Token**: Required for authentication with the Fly.io API.
 - **Prometheus Metrics Enabled**: Your application must expose Prometheus metrics.
@@ -85,8 +85,8 @@ Create a `config.yaml` file in the project root with the following variables:
 
 ```yaml
 dry_run: true
-scale_up_threshold: 50
-scale_down_threshold: 30
+traffic_threshold: 50
+deployment_threshold: 30
 cooldown_period: 300  # in seconds
 
 allowed_regions:
@@ -106,8 +106,8 @@ always_running_regions:
 **Options**
 
 - `dry_run`: If `true`, the script will not make any changes to the Fly.io API.
-- `scale_up_threshold`: The traffic count that triggers a scale-up action.
-- `scale_down_threshold`: The traffic count that triggers a scale-down action.
+- `traffic_threshold`: The traffic count that triggers a scale-up action.
+- `deployment_threshold`: The traffic count that triggers a scale-down action.
 - `cooldown_period`: The number of seconds to wait before allowing another action in the same region.
 - `fly_app_name`: The name of your Fly.io application.
 - `allowed_regions`: A list of regions to allow deployment to.

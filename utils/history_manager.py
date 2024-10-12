@@ -28,7 +28,7 @@ def update_traffic_history(current_traffic, dry_run):
     now = datetime.now(timezone.utc)
     history[now] = current_traffic
     
-    # Keep only the last 5 entries
-    sorted_history = dict(sorted(history.items(), reverse=True)[:5])
+    # Keep the last 20 entries 
+    sorted_history = dict(sorted(history.items(), reverse=True)[:20])
     
     save_traffic_history(sorted_history, dry_run)

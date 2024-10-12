@@ -43,9 +43,15 @@ class MetricsFetcher:
     def fetch_region_traffic(self):
         app_name = self.get_app_name()
         if self.dry_run:
-            return self._generate_mock_traffic_data(app_name)
+            traffic_data = self._generate_mock_traffic_data(app_name)
         else:
-            return self._fetch_real_traffic_data(app_name)
+            traffic_data = self._fetch_real_traffic_data(app_name)
+        
+        logger.info(f"Traffic data for {app_name}:")
+        for region, count in traffic_data.items():
+            logger.info(f"  {region}: {count}")
+        
+        return traffic_data
 
     def _fetch_real_traffic_data(self, app_name):
         query = f'sum(fly_edge_http_responses_count{{app="{app_name}"}}[5m]) by (region)'

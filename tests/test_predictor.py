@@ -4,8 +4,8 @@ from prediction.placement_predictor import predict_placement_actions
 
 class TestPlacementPredictor(unittest.TestCase):
     @patch('prediction.placement_predictor.config', {
-        'scale_up_threshold': 50,
-        'scale_down_threshold': 30,
+        'traffic_threshold': 50,
+        'deployment_threshold': 30,
         'allowed_regions': ['ams', 'fra', 'lhr'],
         'excluded_regions': ['sin', 'nrt'],
         'always_running_regions': ['iad', 'cdg']
@@ -18,8 +18,8 @@ class TestPlacementPredictor(unittest.TestCase):
         current_regions = ['ams', 'lhr']
 
         # Expected behavior:
-        # - 'ams' remains deployed (above SCALE_DOWN_THRESHOLD)
-        # - 'lhr' remains deployed (above SCALE_DOWN_THRESHOLD)
+        # - 'ams' remains deployed (above deployment_threshold)
+        # - 'lhr' remains deployed (above deployment_threshold)
         # - 'sin' not deployed (in excluded_regions)
         # - 'iad' and 'cdg' deployed (always_running_regions)
         regions_to_deploy, regions_to_remove = predict_placement_actions(history, current_regions)
@@ -31,8 +31,8 @@ class TestPlacementPredictor(unittest.TestCase):
         self.assertNotIn('lhr', regions_to_remove)
 
     @patch('prediction.placement_predictor.config', {
-        'scale_up_threshold': 50,
-        'scale_down_threshold': 30,
+        'traffic_threshold': 50,
+        'deployment_threshold': 30,
         'allowed_regions': ['ams', 'fra', 'lhr'],
         'excluded_regions': ['sin', 'nrt'],
         'always_running_regions': []
@@ -56,8 +56,8 @@ class TestPlacementPredictor(unittest.TestCase):
         self.assertEqual(len(regions_to_remove), 0)
 
     @patch('prediction.placement_predictor.config', {
-        'scale_up_threshold': 50,
-        'scale_down_threshold': 30,
+        'traffic_threshold': 50,
+        'deployment_threshold': 30,
         'allowed_regions': [],
         'excluded_regions': [],
         'always_running_regions': ['ams']
