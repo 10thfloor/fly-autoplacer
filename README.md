@@ -102,7 +102,8 @@ FLY_APP_NAME=your_fly_app_name
 
 ### 2. Application Configuration
 
-Create a `config.yaml` file in the project root with the following variables:
+Update the `config/config.yml` to tweak the placement logic. <br/>
+There is a file watcher in place so any changes made while the service is running will be applied automatically.
 
 ```yaml
 # Configuration settings for the auto-placer
