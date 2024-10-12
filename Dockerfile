@@ -1,5 +1,5 @@
 # Use an official Python runtime as the base image
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -45,7 +45,7 @@ RUN poetry install --no-dev --no-interaction --no-ansi
 RUN mkdir -p data logs
 
 # Set environment variables for Fly.io (modify as needed)
-ENV FLY_APP_NAME=your-fly-app-name
+ENV FLY_APP_NAME=mock-app
 
 # Expose ports if your application uses any (modify if necessary)
 EXPOSE 8000

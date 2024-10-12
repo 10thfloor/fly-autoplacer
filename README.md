@@ -1,7 +1,7 @@
 # Fly Auto-Placer
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
 Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns. The goal is to seamlessly integrate this tool into your Fly deployments for optimal global performance.
 
@@ -15,7 +15,7 @@ poetry install
 poetry run python3 main.py
 ```
 
-This will start the auto-placer service in dry-run mode using the default config in `config/config.yml`.
+This will start the auto-placer service in dry-run mode using the default config in `config/config.yml`. <br/>
 **Currently, the service will not make any changes to your Fly.io application.**
 
 #### In another terminal:
@@ -24,15 +24,27 @@ This will start the auto-placer service in dry-run mode using the default config
 curl -X POST http://localhost:8000/trigger
 ```
 
-This will trigger the auto-placer service and return the current deployment state.
+This will trigger the auto-placer service and return the current deployment state. <br/>
 You can run this multiple times to see the **adaptive thresholds** in action.
 
 
 ## Placement Logic
 
-The auto-placer uses a combination of short-term and long-term average traffic to make placement decisions, as well as a "COOLDOWN" period to prevent rapid re-deployment of regions. 
+The placement algorithm is simple and can be found in [prediction/placement_predictor.py](prediction/placement_predictor.py).
+
+`fly-autoplacer` uses a combination of **short-term and long-term average traffic** to make placement decisions, as well as a **cooldown** period to prevent rapid re-deployment of regions.
 
 These settings can be adjusted in the `config/config.yml` file.
+
+
+## Run in Docker
+
+The auto-placer can be run in a Docker container.
+
+```bash
+docker build -t fly-autoplacer .
+docker run -p 8000:8000 fly-autoplacer
+```
 
 ---
 
@@ -47,7 +59,7 @@ These settings can be adjusted in the `config/config.yml` file.
 
 ## Prerequisites
 
-- **Python 3.10+**
+- **Python 3.11+**
 - **Fly.io Account**: Ensure you have access to your application's metrics.
 - **Fly.io API Token**: Required for authentication with the Fly.io API.
 - **Prometheus Metrics Enabled**: Your application must expose Prometheus metrics.
