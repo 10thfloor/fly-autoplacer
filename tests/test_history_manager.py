@@ -44,7 +44,7 @@ class TestHistoryManager(unittest.TestCase):
             }
         }
         current_data = {'iad': 100, 'cdg': 50}
-        updated_history = update_traffic_history(current_data)
+        updated_history = update_traffic_history(current_data, dry_run=True)
 
         # Should have two entries in history now
         self.assertEqual(len(updated_history), 2)

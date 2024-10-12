@@ -162,7 +162,9 @@ def update_placements(regions_to_deploy, regions_to_remove):
     return list(updated_state.keys()), action_results
 
 def main():
-    metrics_fetcher = MetricsFetcher()
+    config = Config.get_config()
+    dry_run = config['dry_run']
+    metrics_fetcher = MetricsFetcher(dry_run=dry_run)
     app_name = metrics_fetcher.get_app_name()
     
     logger.info(f"Starting auto-placer execution for app: {app_name}")
@@ -171,7 +173,7 @@ def main():
     logger.debug(f"Current traffic data for app {app_name}: {current_data}")
     
     logger.info("Updating traffic history...")
-    update_traffic_history(current_data)
+    update_traffic_history(current_data, dry_run)
     
     logger.info("Retrieving current deployment regions...")
     current_state = load_deployment_state(dry_run=DRY_RUN)

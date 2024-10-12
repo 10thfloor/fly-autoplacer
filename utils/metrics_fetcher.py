@@ -10,10 +10,10 @@ from utils import mock_traffic_generator
 
 class MetricsFetcher:
 
-    def __init__(self):
+    def __init__(self, dry_run=None):
         load_dotenv()
         self.config = Config.get_config()
-        self.dry_run = self.config['dry_run']
+        self.dry_run = dry_run if dry_run is not None else self.config['dry_run']
         
         self.api_url = os.environ.get('FLY_PROMETHEUS_URL')
         self.api_token = os.environ.get('FLY_API_TOKEN')
@@ -63,5 +63,5 @@ class MetricsFetcher:
         return result
 
     def _generate_mock_traffic_data(self, mock_app_name):
-        mock_logs = mock_traffic_generator.generate_mock_logs(dry_run=self.dry_run)
+        mock_logs = mock_traffic_generator.generate_mock_logs(self.dry_run)
         return mock_traffic_generator.generate_mock_traffic_data(mock_logs)

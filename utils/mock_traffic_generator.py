@@ -1,6 +1,7 @@
 import random
 from datetime import datetime, timedelta
 from utils.state_manager import load_deployment_state
+from utils.history_manager import update_traffic_history
 
 MOCK_IP_REGION_MAP = {
     '203.0.113.5': 'cdg',
@@ -25,42 +26,40 @@ MOCK_TRAFFIC_LEVEL_RANGES = {
 MOCK_TRAFFIC_LEVEL_WEIGHTS_DEPLOYED = [0.4, 0.3, 0.2, 0.1]  # very_low, low, medium, high
 MOCK_TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED = [0.1, 0.2, 0.3, 0.4]  # very_low, low, medium, high
 
-def generate_mock_logs(dry_run=True):
+def generate_mock_logs(dry_run):
     """
     Generate mock recent logs simulating traffic across different regions.
-
-    This function creates synthetic log data to mimic real-world traffic patterns
-    for testing and development purposes. It takes into account the current
-    deployment state and generates traffic data accordingly.
-
-    Args:
-        dry_run (bool): Whether the function is being called in dry run mode.
-
-    Returns:
-        list: A list of dictionaries, each representing a log entry with 'ip' and 'timestamp' keys.
     """
     mock_logs = []
     now = datetime.utcnow()
     
-    mock_current_state = load_deployment_state(dry_run=dry_run)
+    mock_current_state = load_deployment_state(dry_run)
+    current_traffic = {}
     
     for region in MOCK_IP_REGION_MAP.values():
         is_deployed = region in mock_current_state
         
+        weights = MOCK_TRAFFIC_LEVEL_WEIGHTS_DEPLOYED if is_deployed else MOCK_TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED
+        
         mock_traffic_level = random.choices(
             population=list(MOCK_TRAFFIC_LEVEL_RANGES.keys()),
-            weights=MOCK_TRAFFIC_LEVEL_WEIGHTS_DEPLOYED if is_deployed else MOCK_TRAFFIC_LEVEL_WEIGHTS_NON_DEPLOYED,
+            weights=weights,
             k=1
         )[0]
         
         min_requests, max_requests = MOCK_TRAFFIC_LEVEL_RANGES[mock_traffic_level]
         num_requests = random.randint(min_requests, max_requests)
         
+        current_traffic[region] = num_requests
+        
         mock_ip = next(ip for ip, r in MOCK_IP_REGION_MAP.items() if r == region)
         
         for _ in range(num_requests):
             mock_timestamp = now - timedelta(seconds=random.randint(0, 300))
             mock_logs.append({'ip': mock_ip, 'timestamp': mock_timestamp.isoformat()})
+    
+    # Update traffic history
+    update_traffic_history(current_traffic, dry_run)
     
     return mock_logs
 
