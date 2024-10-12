@@ -16,8 +16,35 @@ from utils.state_manager import load_deployment_state, save_deployment_state
 from utils.fancy_logger import get_logger, log_action
 from dateutil.parser import isoparse
 from utils.config_loader import Config
+from logging.handlers import RotatingFileHandler
 
-logger = get_logger(__name__)
+# Set up logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Create console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create file handler
+file_handler = RotatingFileHandler(
+    'logs/auto_placer.log',
+    maxBytes=1024 * 1024,  # 1 MB
+    backupCount=5
+)
+file_handler.setLevel(logging.INFO)
+
+# Create formatter and add it to the handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+file_handler.setFormatter(formatter)
+
+# Add the handlers to the logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 # Load configuration
 config = Config.get_config()
@@ -58,6 +85,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
                 elapsed_time = (now - last_action_time).total_seconds()
                 if elapsed_time < COOLDOWN_PERIOD:
                     remaining = int(COOLDOWN_PERIOD - elapsed_time)
+                    logger.info(f"Skipping deployment to {region} due to cooldown period ({remaining} seconds remaining).")
                     action_results["skipped"].append({
                         "region": region,
                         "action": "deploy",
@@ -66,6 +94,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
                     continue
             
             if region in EXCLUDED_REGIONS:
+                logger.info(f"Skipping deployment to {region} as it's in the excluded_regions list.")
                 action_results["skipped"].append({
                     "region": region,
                     "action": "deploy",
@@ -74,6 +103,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
                 continue
             
             if ALLOWED_REGIONS and region not in ALLOWED_REGIONS:
+                logger.info(f"Skipping deployment to {region} as it's not in the allowed_regions list.")
                 action_results["skipped"].append({
                     "region": region,
                     "action": "deploy",
@@ -95,6 +125,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
     for region in regions_to_remove:
         if region in updated_state:
             if region in ALWAYS_RUNNING_REGIONS:
+                logger.info(f"Skipping removal of {region} as it's in the always_running_regions list.")
                 action_results["skipped"].append({
                     "region": region,
                     "action": "remove",
@@ -108,6 +139,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
                 elapsed_time = (now - last_action_time).total_seconds()
                 if elapsed_time < COOLDOWN_PERIOD:
                     remaining = int(COOLDOWN_PERIOD - elapsed_time)
+                    logger.info(f"Skipping removal from {region} due to cooldown period ({remaining} seconds remaining).")
                     action_results["skipped"].append({
                         "region": region,
                         "action": "remove",
@@ -115,7 +147,6 @@ def update_placements(regions_to_deploy, regions_to_remove):
                     })
                     continue
 
-            log_action("remove", region, DRY_RUN)
             del updated_state[region]
 
             if DRY_RUN:
@@ -130,6 +161,7 @@ def update_placements(regions_to_deploy, regions_to_remove):
     return list(updated_state.keys()), action_results
 
 def main():
+    logger.info("Starting auto-placer execution")
     logger.info("Collecting current traffic data...")
     current_data = collect_region_traffic()
     logger.debug(f"Current traffic data: {current_data}")
@@ -152,7 +184,6 @@ def main():
     current_regions, action_results = update_placements(regions_to_deploy, regions_to_remove)
     logger.info(f"Update complete. Deployment state: {current_regions}")
     
-    # Prepare the result data with updated current_regions and action_results
     result = {
         "current_regions": current_regions,
         "action_results": action_results,
