@@ -5,6 +5,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Deno
+dashboard/node_modules
+deno.lock
+
 # C extensions
 *.so
 
