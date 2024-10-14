@@ -1,0 +1,46 @@
+{
+  "tasks": {
+    "build": "deno run -A npm:@remix-run/dev vite:build",
+    "dev": "deno run -A npm:@remix-run/dev vite:dev",
+    "lint": "deno lint",
+    "start": "deno serve -A --port 8080 --parallel ./server.ts",
+    "typecheck": "deno check '**/*'",
+    "typegen": "deno types > ./app/deno.d.ts"
+  },
+  "imports": {
+    "@remix-run/deno": "npm:@remix-run/deno@2.13.1",
+    "@remix-run/dev": "npm:@remix-run/dev@2.13.1",
+    "@remix-run/node": "npm:@remix-run/node@2.13.1",
+    "@remix-run/react": "npm:@remix-run/react@2.13.1",
+    "@remix-run/serve": "npm:@remix-run/serve@2.13.1",
+    "@std/http": "jsr:@std/http@1.0.8",
+    "@std/path": "jsr:@std/path@^1.0.6",
+    "@types/react": "npm:@types/react@18.3.1",
+    "@types/react-dom": "npm:@types/react-dom@18.3.1",
+    "@typescript-eslint/eslint-plugin": "npm:@typescript-eslint/eslint-plugin@6.7.4",
+    "@typescript-eslint/parser": "npm:@typescript-eslint/parser@6.7.4",
+    "autoprefixer": "npm:autoprefixer@10.4.19",
+    "isbot": "npm:isbot@4.1.0",
+    "postcss": "npm:postcss@8.4.38",
+    "react": "npm:react@18.3.1",
+    "react-dom": "npm:react-dom@18.3.1",
+    "tailwindcss": "npm:tailwindcss@3.4.4",
+    "typescript": "npm:typescript@5.1.6",
+    "vite": "npm:vite@5.1.0",
+    "vite-tsconfig-paths": "npm:vite-tsconfig-paths@4.2.1"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "npm:react@^18.3",
+    "strict": true,
+    "lib": ["ES2021", "DOM", "deno.ns"]
+  },
+  "lint": {
+    "include": ["**/*.ts", "**/*.tsx"],
+    "exclude": ["node_modules", "build", "public/build"]
+  },
+  "fmt": {
+    "include": ["**/*.ts", "**/*.tsx"],
+    "exclude": ["node_modules", "build", "public/build"]
+  }
+}
