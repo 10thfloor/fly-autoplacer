@@ -30,7 +30,7 @@ You can run this multiple times to see the **adaptive thresholds** in action.
 
 - [Fly Auto-Placer](#fly-auto-placer)
   - [How to use this service](#how-to-use-this-service)
-      - [In another terminal](#in-another-terminal)
+    - [In another terminal](#in-another-terminal)
   - [Table of Contents](#table-of-contents)
   - [Placement Logic](#placement-logic)
   - [Run in Docker](#run-in-docker)
@@ -196,7 +196,7 @@ Currently only works in dry-run mode. Won't make any changes to your Fly.io appl
 
 2. **Monitor Logs**:
 
-   Logs are stored in the `logs/auto_placer.log` file for detailed information.
+   Logs are stored in the `data/logs/auto_placer.log` file for detailed information.
 
 3. **View Current Deployments**:
 

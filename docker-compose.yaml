@@ -1,0 +1,27 @@
+services:
+  dashboard:
+    build:
+      context: ./placer-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./placer-dashboard/.env
+    depends_on:
+      - placer-service
+
+  placer-service:
+    build:
+      context: ./placer-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./placer-service/.env
+    volumes:
+      - ./placer-service/data:/app/data
+
+volumes:
+  placer-service-data:
+  placer-service-logs:
+

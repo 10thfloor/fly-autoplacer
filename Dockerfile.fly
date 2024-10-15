@@ -1,0 +1,42 @@
+# Use a single base image with Python 3.11
+FROM python:3.11-slim
+
+# Install required packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Deno
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 - && \
+    ln -s /root/.local/bin/poetry /usr/local/bin/poetry
+
+# Set environment variables
+ENV POETRY_VERSION=1.4.0
+ENV POETRY_VIRTUALENVS_CREATE=false
+ENV PYTHONUNBUFFERED=1
+ENV DENO_INSTALL="/usr/local"
+ENV PATH="${DENO_INSTALL}/bin:${PATH}"
+
+# Copy placer-service code and install dependencies
+WORKDIR /app/placer-service
+COPY placer-service/ ./
+RUN poetry install --no-dev --no-interaction --no-ansi
+
+# Copy placer-dashboard code
+WORKDIR /app/placer-dashboard
+COPY placer-dashboard/ ./
+RUN deno install --allow-scripts
+RUN deno task build
+
+# Copy the entrypoint script and make it executable
+COPY entrypoint.fly.sh /entrypoint.fly.sh
+RUN chmod +x /entrypoint.fly.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/bin/sh", "/entrypoint.fly.sh"]

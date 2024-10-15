@@ -1,0 +1,38 @@
+app = "fly-auto-placer"
+primary_region = "sea"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  PLACER_SERVICE_URL = "http://placer.internal:8080"
+
+[processes]
+  dashboard = "dashboard"
+  placer = "placer"
+
+[http_service]
+  processes = ["dashboard"]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+# VM configurations for each process
+[process_groups.dashboard]
+  cpu_kind = "shared"
+  cpus = 1
+
+[process_groups.placer]
+  cpu_kind = "shared"
+  cpus = 1
+
+[[mounts]]
+  source = "placer_service_data"
+  destination = "/app/placer-service/data"
+  processes = ["placer"]

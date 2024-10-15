@@ -1,5 +1,5 @@
 {
   "linter": {
-    "ignore": ["dashboard/**"]
+    "ignore": ["placer-dashboard/**"]
   }
 }
