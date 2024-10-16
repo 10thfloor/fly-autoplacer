@@ -28,10 +28,10 @@ WORKDIR /app/placer-service
 
 # Copy only the dependency files for placer-service and install dependencies
 COPY placer-service/pyproject.toml ./
-RUN poetry install --no-dev --no-interaction --no-ansi
-
 # Copy the rest of the placer-service code
 COPY placer-service/ ./
+
+RUN poetry install --no-dev --no-interaction --no-ansi
 
 # Set working directory for placer-dashboard
 WORKDIR /app/placer-dashboard
