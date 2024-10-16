@@ -2,71 +2,89 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Deno Version](https://img.shields.io/badge/deno-2.0%2B-blue.svg)](https://deno.land/)
 
-Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns. The goal is to seamlessly integrate this tool into your Fly deployments for optimal global performance.
+Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns.
 
 **Note:** This project is currently a work in progress (POC).
 
-## How to use this service
+## Getting Started
 
-```bash
-poetry install
-poetry run python3 main.py
+You'll need to install the following tools:
+
+- [Deno v2+](https://deno.com/)
+- [Poetry](https://python-poetry.org/)
+- [Fly.io Account + CLI](https://fly.io)
+
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in the `placer-service` root with the following variables:
+
+```dotenv
+FLY_API_TOKEN=your_fly_api_token
+FLY_PROMETHEUS_URL=https://api.fly.io/prometheus/personal
+FLY_APP_NAME=your_fly_app_name
 ```
 
-This will start the auto-placer service in dry-run mode using the default config in `config/config.yml`. <br/>
+Create a `.env` file in the `placer-dashboard` root with the following variables:
+
+```dotenv
+PLACER_SERVICE_URL=http://localhost:8000
+```
+
+## Local Development
+
+Installs dependencies in both apps and starts up the servers.
+
+```bash
+deno -A local-dev.ts
+```
+
+This will start the auto-placer service in dry-run mode using the [default config](#configuration) in [`placer-service/config/config.yaml`](placer-service/config/config.yaml) on [http://localhost:8000](http://localhost:8000)
+
 **Currently, the service will not make any changes to your Fly.io application.**
 
-#### In another terminal
+It will also start the placer-dashboard (Remix.run) in watch mode. <br/>
+Open [http://localhost:8080](http://localhost:8080) to view it in the browser.
+
+## Triggering the auto-placer
 
 ```bash
 curl -X POST http://localhost:8000/trigger
 ```
 
 This will trigger the auto-placer service and return the current deployment state. <br/>
-You can run this multiple times to see the **adaptive thresholds** in action.
+You can run this _multiple times_ to see the [**adaptive thresholds**](#placement-logic) in action.
 
 ## Table of Contents
 
 - [Fly Auto-Placer](#fly-auto-placer)
-  - [How to use this service](#how-to-use-this-service)
-    - [In another terminal](#in-another-terminal)
+  - [Getting Started](#getting-started)
+  - [Configuration](#configuration)
+    - [Environment Variables](#environment-variables)
+  - [Local Development](#local-development)
+  - [Triggering the auto-placer](#triggering-the-auto-placer)
   - [Table of Contents](#table-of-contents)
   - [Placement Logic](#placement-logic)
-  - [Run in Docker](#run-in-docker)
   - [Features](#features)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-    - [1. Environment Variables](#1-environment-variables)
-    - [2. Application Configuration](#2-application-configuration)
-    - [3. Fly.io API Token](#3-flyio-api-token)
-    - [4. Prometheus Metrics Setup](#4-prometheus-metrics-setup)
-    - [5. Required Tools](#5-required-tools)
-  - [Usage](#usage)
+  - [Application Configuration](#application-configuration)
+  - [Fly.io Setup](#flyio-setup)
+    - [Fly CLI](#fly-cli)
+    - [Fly.io API Token](#flyio-api-token)
+    - [Prometheus Metrics Setup](#prometheus-metrics-setup)
   - [Understanding the Output](#understanding-the-output)
   - [Roadmap](#roadmap)
-  - [Troubleshooting](#troubleshooting)
   - [License](#license)
 
 ## Placement Logic
 
-The placement algorithm is simple and can be found in [prediction/placement_predictor.py](prediction/placement_predictor.py).
+The placement algorithm is simple and can be found in [`prediction/placement_predictor.py`](placer-service/prediction/placement_predictor.py).
 
 `fly-autoplacer` uses a combination of **short-term and long-term average traffic** to make placement decisions, as well as a **cooldown** period to prevent rapid re-deployment of regions.
 
-These settings can be adjusted in the `config/config.yml` file.
-
-## Run in Docker
-
-The auto-placer can be run in a Docker container.
-
-```bash
-docker build -t fly-autoplacer .
-docker run -p 8000:8000 fly-autoplacer
-```
-
----
+These settings can be adjusted in the [`config/config.yml`](placer-service/config/config.yml) file.
 
 ## Features
 
@@ -77,50 +95,7 @@ docker run -p 8000:8000 fly-autoplacer
 - **Dry Run Mode**: Test the scaling logic without affecting actual deployments.
 - **Historical Data Storage**: Keeps a history of traffic data for better scaling decisions.
 
-## Prerequisites
-
-- **Python 3.11+**
-- **Fly.io Account**: Ensure you have access to your application's metrics.
-- **Fly.io API Token**: Required for authentication with the Fly.io API.
-- **Prometheus Metrics Enabled**: Your application must expose Prometheus metrics.
-- **poetry**: Python package installer.
-- **Fly CLI**: Fly.io command-line tool.
-
-## Installation
-
-1. **Clone the Repository**:
-
-   ```bash
-   git clone https://github.com/yourusername/fly-placer.git
-   ```
-
-2. **Navigate to the Project Directory**:
-
-   ```bash
-   cd fly-placer
-   ```
-
-3. **Install Dependencies**:
-
-   This project uses [Poetry](https://python-poetry.org/) for dependency management.
-
-   ```bash
-   poetry install
-   ```
-
-## Configuration
-
-### 1. Environment Variables
-
-Create a `.env` file in the project root with the following variables:
-
-```dotenv
-FLY_API_TOKEN=your_fly_api_token
-FLY_PROMETHEUS_URL=https://api.fly.io/prometheus/personal
-FLY_APP_NAME=your_fly_app_name
-```
-
-### 2. Application Configuration
+## Application Configuration
 
 Update the `config/config.yml` to tweak the placement logic. <br/>
 There is a file watcher in place so any changes made while the service is running will be applied automatically.
@@ -162,18 +137,9 @@ always_running_regions:
 
 ```
 
-### 3. Fly.io API Token
+## Fly.io Setup
 
-- Log in to your Fly.io account.
-- Navigate to **Account Settings**.
-- Generate a new personal access token with appropriate permissions.
-
-### 4. Prometheus Metrics Setup
-
-- Ensure that your Fly.io application is configured to expose Prometheus metrics.
-- Refer to the [Fly.io Metrics Documentation](https://fly.io/docs/reference/metrics/) for details.
-
-### 5. Required Tools
+### Fly CLI
 
 - **Fly CLI**: Install the Fly.io command-line tool.
 
@@ -181,30 +147,26 @@ always_running_regions:
   curl -L https://fly.io/install.sh | sh
   ```
 
-## Usage
+### Fly.io API Token
 
-Currently only works in dry-run mode. Won't make any changes to your Fly.io application.
+- Log in to your Fly.io account.
+- Navigate to **Account Settings**.
+- Generate a new personal access token with read/write permissions.
 
-1. **Run the Auto-Placer Service**:
+### Prometheus Metrics Setup
 
-   ```bash
-   poetry run python3 main.py
-   ```
-
-   This will start the auto-placer service in dry-run mode using the default config in `config/config.yml`.
-   **Currently, the service will not make any changes to your Fly.io application.**
-
-2. **Monitor Logs**:
-
-   Logs are stored in the `data/logs/auto_placer.log` file for detailed information.
-
-3. **View Current Deployments**:
-
-   The deployment state is saved in `data/deployment_state_dry_run.json`.
+- Ensure that your Fly.io application is configured to expose Prometheus metrics.
+- Refer to the [Fly.io Metrics Documentation](https://fly.io/docs/reference/metrics/) for details.
 
 ## Understanding the Output
 
-Here is some example output from the auto-placer:
+**Monitor Logs**:
+   Logs are stored in the [`placer-service/data/logs/auto_placer.log`](placer-service/data/logs/auto_placer.log) file for detailed information.
+
+**View Current Deployments**:
+   The deployment state is saved in [`placer-service/data/deployment_state_dry_run.json`](placer-service/data/deployment_state_dry_run.json).
+
+Here is some example output from the auto-placer after triggering:
 
 ```json
 {
@@ -279,18 +241,6 @@ The `current_deployment` and `updated_deployment` lists show the current and upd
 - **Real-Time Monitoring**: Integrate with monitoring tools like Prometheus and Grafana.
 - **Improved State Management**: Utilize distributed key-value stores like etcd or Consul.
 - **Autoscaling Integration**: Explore Fly.io's built-in autoscaling capabilities.
-
-## Troubleshooting
-
-- **Authentication Errors**:
-
-  - Ensure your `FLY_API_TOKEN` is correct and has the necessary permissions.
-  - Verify that the token is correctly specified in the `.env` file.
-
-- **Empty Output or Missing Regions**:
-
-  - Confirm that your application is receiving traffic.
-  - Check that Prometheus metrics are enabled and accessible.
 
 ## License
 

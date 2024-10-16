@@ -10,7 +10,10 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({}: LoaderFunctionArgs) {
-  const placerServiceUrl = "http://fly-auto-placer.internal:8000";
+  const placerServiceUrl = Deno.env.get("PLACER_SERVICE_URL");
+  if (!placerServiceUrl) {
+    return json({ error: "PLACER_SERVICE_URL is not set" }, { status: 500 });
+  }
   const response = await fetch(placerServiceUrl);
   const data = await response.json();
 

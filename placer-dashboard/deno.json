@@ -1,7 +1,7 @@
 {
   "tasks": {
     "build": "deno run -A npm:@remix-run/dev vite:build",
-    "dev": "deno run -A npm:@remix-run/dev vite:dev",
+    "dev": "deno run -A npm:@remix-run/dev vite:dev --port 8080",
     "lint": "deno lint",
     "start": "deno serve -A --port 8080 ./server.ts",
     "typecheck": "deno check '**/*'",
@@ -13,6 +13,7 @@
     "@remix-run/node": "npm:@remix-run/node@2.13.1",
     "@remix-run/react": "npm:@remix-run/react@2.13.1",
     "@remix-run/serve": "npm:@remix-run/serve@2.13.1",
+    "@remix-run/server-runtime": "npm:@remix-run/server-runtime@2.13.1",
     "@std/http": "jsr:@std/http@1.0.8",
     "@std/path": "jsr:@std/path@^1.0.6",
     "@types/react": "npm:@types/react@18.3.1",

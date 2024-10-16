@@ -23,20 +23,36 @@ ENV PYTHONUNBUFFERED=1
 ENV DENO_INSTALL="/usr/local"
 ENV PATH="${DENO_INSTALL}/bin:${PATH}"
 
-# Copy placer-service code and install dependencies
+# Set working directory for placer-service
 WORKDIR /app/placer-service
-COPY placer-service/ ./
+
+# Copy only the dependency files for placer-service and install dependencies
+COPY placer-service/pyproject.toml ./
 RUN poetry install --no-dev --no-interaction --no-ansi
 
-# Copy placer-dashboard code
+# Copy the rest of the placer-service code
+COPY placer-service/ ./
+
+# Set working directory for placer-dashboard
 WORKDIR /app/placer-dashboard
-COPY placer-dashboard/ ./
+
+# Copy Node.js dependency files and install dependencies
+COPY placer-dashboard/package.json ./
+COPY placer-dashboard/deno.json ./
+
+# Cache Deno dependencies
 RUN deno install --allow-scripts
+RUN deno cache deno.json
+
+# Copy the rest of the placer-dashboard code and build
+COPY placer-dashboard/ ./
 RUN deno task build
 
 # Copy the entrypoint script and make it executable
 COPY entrypoint.fly.sh /entrypoint.fly.sh
 RUN chmod +x /entrypoint.fly.sh
+
+ENV PLACER_SERVICE_URL="http://fly-auto-placer.internal:8080"
 
 # Set the entrypoint
 ENTRYPOINT ["/bin/sh", "/entrypoint.fly.sh"]

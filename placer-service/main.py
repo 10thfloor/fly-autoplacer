@@ -93,7 +93,7 @@ async def run_server(host, port):
         host=host,
         port=port,
         log_level="info",
-        reload=False
+        reload=False,
     )
     server = uvicorn.Server(config)
 
