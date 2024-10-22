@@ -7,6 +7,7 @@ import logging
 from utils.config_loader import Config
 from utils.fancy_logger import get_logger
 import numpy as np
+from datetime import timezone
 
 # Load configuration
 config = Config.get_config()
@@ -23,125 +24,93 @@ ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
 
 TRAFFIC_HISTORY_FILE = 'data/traffic_history.json'
 
-def predict_placement_actions(traffic_history, current_deployments):
-    logger = logging.getLogger(__name__)
-    logger.info("Starting placement prediction with advanced traffic analysis")
-    
-    config = Config.get_config()
-    traffic_threshold = config['traffic_threshold']
-    deployment_threshold = config['deployment_threshold']
-    EXCLUDED_REGIONS = config.get('excluded_regions', [])
-    ALLOWED_REGIONS = config.get('allowed_regions', [])
-    ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
+class PlacementPredictor:
+    def __init__(self, config, metrics_client=None):  # Make metrics_client optional for now
+        self.config = config
+        self.metrics_client = metrics_client
+        self.threshold_history = {}  # Add this but won't use yet
 
-    regions_to_deploy = []
-    regions_to_remove = []
-    skipped_regions = []
+    # Add new method but keep existing logic for now
+    def calculate_adaptive_thresholds(self, region, averages, traffic_threshold, deployment_threshold):
+        """Enhanced version with volatility consideration"""
+        if not averages or 'long' not in averages:
+            return traffic_threshold, deployment_threshold
 
-    # Define parameters for calculating short-term and long-term traffic averages
-    # These parameters are used to analyze recent trends and overall patterns in traffic data
-    short_term_window = config['short_term_window']  # Number of recent data points to consider for short-term analysis
-    long_term_window = config['long_term_window']  # Number of data points to consider for long-term analysis
-    alpha_short = config['alpha_short']  # Exponential smoothing factor for short-term average (higher weight to recent data)
-    alpha_long = config['alpha_long']  # Exponential smoothing factor for long-term average (more stable, less reactive)
-    
-    # These averages will be used to make more informed decisions about deploying or removing regions
-    # Short-term average helps detect sudden spikes or drops in traffic
-    # Long-term average provides a more stable baseline for overall traffic trends
+        # Get current traffic value
+        current_traffic = averages['long']
+        
+        # Store in history for future volatility calculation
+        region_history = self.threshold_history.setdefault(region, [])
+        region_history.append(current_traffic)
+        # Keep last 10 values for history
+        self.threshold_history[region] = region_history[-10:]
+        
+        # Calculate traffic variability
+        traffic_values = self.threshold_history[region]
+        mean_traffic = np.mean(traffic_values)
+        std_traffic = np.std(traffic_values) if len(traffic_values) > 1 else 0
+        
+        traffic_variability = std_traffic / mean_traffic if mean_traffic > 0 else 0
+        volatility_factor = 1 + traffic_variability
 
-    traffic_averages = defaultdict(lambda: {'short': 0, 'long': 0, 'count': 0})
+        # Calculate thresholds with volatility consideration
+        adaptive_traffic_threshold = max(
+            traffic_threshold,
+            mean_traffic * (1.1 * volatility_factor)
+        )
+        
+        adaptive_deployment_threshold = min(
+            deployment_threshold,
+            mean_traffic * (0.9 / volatility_factor)
+        )
 
-    # Check if traffic_history is in the correct format
-    if not isinstance(traffic_history, dict):
-        logger.error(f"Invalid traffic_history format. Expected dict, got {type(traffic_history)}")
-        return [], [], [{"region": "all", "action": "none", "reason": "Invalid traffic history data"}]
+        # Add hysteresis
+        hysteresis_gap = (adaptive_traffic_threshold - adaptive_deployment_threshold) * 0.1
+        adaptive_deployment_threshold += hysteresis_gap
 
-    # Sort and limit the history to the long_term_window
-    sorted_history = sorted(traffic_history.items(), reverse=True)[:long_term_window]
+        return adaptive_traffic_threshold, adaptive_deployment_threshold
 
-    for timestamp, data in sorted_history:
-        if not isinstance(data, dict):
-            logger.warning(f"Invalid data format for timestamp {timestamp}. Skipping.")
-            continue
-        for region, traffic in data.items():
-            if not isinstance(traffic, (int, float)):
-                logger.warning(f"Invalid traffic data for region {region} at {timestamp}. Skipping.")
-                continue
-            if traffic_averages[region]['count'] == 0:
-                traffic_averages[region] = {'short': traffic, 'long': traffic, 'count': 1}
-            else:
-                if traffic_averages[region]['count'] <= short_term_window:
-                    traffic_averages[region]['short'] = (
-                        alpha_short * traffic + (1 - alpha_short) * traffic_averages[region]['short']
-                    )
-                traffic_averages[region]['long'] = (
-                    alpha_long * traffic + (1 - alpha_long) * traffic_averages[region]['long']
+    # Modify existing predict_placement_actions to use new method
+    def predict_placement_actions(self, region, averages):
+        if not averages or 'long' not in averages:
+            return None
+
+        traffic_threshold = self.config.get('traffic_threshold', 100)
+        deployment_threshold = self.config.get('deployment_threshold', 50)
+
+        adaptive_traffic_threshold, adaptive_deployment_threshold = self.calculate_adaptive_thresholds(
+            region,
+            averages, 
+            traffic_threshold, 
+            deployment_threshold
+        )
+
+        current_average = averages['long']
+        action = None
+
+        if current_average > adaptive_traffic_threshold:
+            action = 'scale_up'
+        elif current_average < adaptive_deployment_threshold:
+            action = 'scale_down'
+
+        # Add metrics tracking if metrics client exists
+        if self.metrics_client:
+            metrics = {
+                "region": region,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "current_traffic": current_average,
+                "traffic_threshold": adaptive_traffic_threshold,
+                "deployment_threshold": adaptive_deployment_threshold,
+                "action": action or 'no_action',
+                "threshold_gap": adaptive_traffic_threshold - adaptive_deployment_threshold,
+                "distance_to_nearest_threshold": min(
+                    abs(current_average - adaptive_traffic_threshold),
+                    abs(current_average - adaptive_deployment_threshold)
                 )
-                traffic_averages[region]['count'] += 1
+            }
+            self.metrics_client.record_threshold_metrics(metrics)
 
-    for region, averages in traffic_averages.items():
-        if region in EXCLUDED_REGIONS:
-            skipped_regions.append({
-                "region": region,
-                "action": "deploy",
-                "reason": "Region is in excluded_regions list"
-            })
-            continue
+        return action
 
-        if ALLOWED_REGIONS and region not in ALLOWED_REGIONS:
-            skipped_regions.append({
-                "region": region,
-                "action": "deploy",
-                "reason": "Region is not in allowed_regions list"
-            })
-            continue
 
-        # Adaptive thresholds
-        adaptive_traffic_threshold = max(traffic_threshold, averages['long'] * 1.1)
-        adaptive_deployment_threshold = min(deployment_threshold, averages['long'] * 0.9)
 
-        # Use short-term average if available, otherwise use long-term average
-        current_average = averages['short'] if averages['count'] >= short_term_window else averages['long']
-
-        if current_average >= adaptive_traffic_threshold:
-            if region not in current_deployments:
-                regions_to_deploy.append(region)
-            else:
-                skipped_regions.append({
-                    "region": region,
-                    "action": "deploy",
-                    "reason": f"Region is already deployed. Current avg: {current_average:.2f}, Long-term avg: {averages['long']:.2f}"
-                })
-        elif current_average <= adaptive_deployment_threshold:
-            if region in current_deployments:
-                if region in ALWAYS_RUNNING_REGIONS:
-                    skipped_regions.append({
-                        "region": region,
-                        "action": "remove",
-                        "reason": "Region is in always_running_regions list"
-                    })
-                else:
-                    regions_to_remove.append(region)
-            else:
-                skipped_regions.append({
-                    "region": region,
-                    "action": "remove",
-                    "reason": f"Region is not currently deployed. Current avg: {current_average:.2f}, Long-term avg: {averages['long']:.2f}"
-                })
-        else:
-            skipped_regions.append({
-                "region": region,
-                "action": "none",
-                "reason": f"Traffic does not meet adaptive thresholds. Current avg: {current_average:.2f}, Long-term avg: {averages['long']:.2f}"
-            })
-
-        logger.debug(f"Region {region}: Current avg: {current_average:.2f}, Long-term avg: {averages['long']:.2f}, Data points: {averages['count']}")
-
-    # Ensure ALWAYS_RUNNING_REGIONS are deployed
-    for region in ALWAYS_RUNNING_REGIONS:
-        if region not in current_deployments and region not in regions_to_deploy:
-            regions_to_deploy.append(region)
-            logger.info(f"Adding always-running region {region} to deployment list")
-
-    logger.info(f"Prediction complete. To deploy: {regions_to_deploy}, To remove: {regions_to_remove}, Skipped: {len(skipped_regions)}")
-    return regions_to_deploy, regions_to_remove, skipped_regions

@@ -7,11 +7,11 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
-import json
 from automation import auto_placer
 from utils.config_loader import Config
-import uvicorn
 from utils.metrics_fetcher import MetricsFetcher
+import uvicorn
+from datetime import datetime, timezone  
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -71,20 +71,39 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    try:
+        config = Config.get_config()
+        return {
+            "status": "healthy",
+            "config_loaded": bool(config),
+            "dry_run": config.get('dry_run', True)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+@app.get("/metrics")
+async def get_metrics():
+    try:
+        metrics_fetcher = MetricsFetcher()
+        traffic_data = metrics_fetcher.fetch_region_traffic()
+        return {
+            "traffic_data": traffic_data,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/trigger")
-async def trigger():
+async def trigger_auto_placer():
     try:
-        result = auto_placer.main()
-        # Return the result as JSON
-        return JSONResponse(content=result)
+        config = Config.get_config()  # Get config from Config class
+        auto_placer_instance = auto_placer.AutoPlacer(config)  # Pass config here
+        results = await auto_placer_instance.process_traffic_data()
+        logger.info(f"Auto-placer execution completed. Results: {results}")
+        return JSONResponse(content={"status": "success", "results": results})
     except Exception as e:
         logger.error(f"Error triggering auto-placer: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"message": "An error occurred while triggering the auto-placer"}
-        )
+        raise HTTPException(status_code=500, detail=str(e))
     
 # Modify run_server to be an async function
 async def run_server(host, port):

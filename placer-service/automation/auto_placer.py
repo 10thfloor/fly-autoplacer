@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone
 from monitoring.traffic_monitor import collect_region_traffic
 from utils.history_manager import update_traffic_history
-from prediction.placement_predictor import predict_placement_actions
+from prediction.placement_predictor import PlacementPredictor
 from utils.state_manager import load_deployment_state, save_deployment_state
 from utils.fancy_logger import get_logger
 from utils.history_manager import load_traffic_history
@@ -19,6 +19,7 @@ from dateutil.parser import isoparse
 from utils.config_loader import Config
 from logging.handlers import RotatingFileHandler
 from utils.metrics_fetcher import MetricsFetcher
+from metrics.metrics_client import MetricsClient
 
 # Load configuration
 config = Config.get_config()
@@ -64,123 +65,131 @@ if DRY_RUN:
     # set the app name to the current directory name
     FLY_APP_NAME = os.path.basename(os.getcwd())
 
-def get_current_regions():
-    deployment_state = load_deployment_state(dry_run=DRY_RUN)
-    current_regions = list(deployment_state.keys())
-    print(f"Current deployment regions: {current_regions}")
-    return current_regions
+class AutoPlacer:
+    def __init__(self, config):
+        self.dry_run = config.get('dry_run', True)
+        self.excluded_regions = config.get('excluded_regions', [])
+        self.allowed_regions = config.get('allowed_regions', [])  # Add this line
+        self.always_running_regions = config.get('always_running_regions', [])
+        self.predictor = PlacementPredictor(config)
+        self.logger = get_logger(__name__)
 
-from dateutil.parser import isoparse
-from datetime import datetime, timezone
+    async def process_traffic_data(self):
+        """Main processing loop"""
+        metrics_fetcher = MetricsFetcher(dry_run=self.dry_run)
+        app_name = metrics_fetcher.get_app_name()
+        
+        self.logger.info(f"Starting auto-placer execution for app: {app_name}")
+        
+        # Collect and process traffic data
+        current_data = collect_region_traffic()
+        update_traffic_history(current_data, dry_run=self.dry_run)
+        
+        # Get current state
+        current_state = load_deployment_state(dry_run=self.dry_run)
+        current_regions = list(current_state.keys())
+        
+        # Load traffic history
+        traffic_history = load_traffic_history(dry_run=self.dry_run)
+        
+        # Process each region
+        actions_needed = []
+        for region, traffic_stats in traffic_history.items():
+            if self._should_process_region(region):
+                action = self.predictor.predict_placement_actions(region, traffic_stats)
+                if action:
+                    actions_needed.append((region, action))
+
+        # Execute the needed actions
+        return await self._execute_actions(actions_needed, current_state)
+
+    def _should_process_region(self, region: str) -> bool:
+        """Determine if a region should be processed based on configuration."""
+        if region in self.excluded_regions:
+            return False
+        if self.allowed_regions and region not in self.allowed_regions:
+            return False
+        return True
+
+    async def _execute_actions(self, actions_needed, current_state):
+        """Execute the required placement actions."""
+        regions_to_deploy = []
+        regions_to_remove = []
+        
+        for region, action in actions_needed:
+            if action == 'scale_up' and region not in current_state:
+                regions_to_deploy.append(region)
+            elif action == 'scale_down' and region in current_state:
+                regions_to_remove.append(region)
+        
+        updated_regions, action_results = update_placements(
+            regions_to_deploy, 
+            regions_to_remove
+        )
+        
+        return {
+            "actions_taken": action_results,
+            "updated_regions": updated_regions,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    def _is_in_cooldown(self, region: str, current_state: dict) -> bool:
+        """Check if a region is in cooldown period"""
+        last_action_time_str = current_state.get(region)
+        if not last_action_time_str:
+            return False
+
+        last_action_time = isoparse(last_action_time_str)
+        if last_action_time.tzinfo is None:
+            last_action_time = last_action_time.replace(tzinfo=timezone.utc)
+        
+        elapsed_time = (datetime.now(timezone.utc) - last_action_time).total_seconds()
+        return elapsed_time < self.cooldown_period
 
 def update_placements(regions_to_deploy, regions_to_remove):
-    current_state = load_deployment_state(dry_run=DRY_RUN)
-    updated_state = current_state.copy()
-    now = datetime.now(timezone.utc)
-    action_results = {"deployed": [], "removed": [], "skipped": []}
+    """Update machine placements in Fly.io regions."""
+    action_results = {
+        "deployed": [],
+        "removed": [],
+        "skipped": [],
+        "errors": []
+    }
+    updated_regions = []
 
-    # Deploy machines
+    # Process deployments
     for region in regions_to_deploy:
-        last_action_time_str = current_state.get(region)
-        if last_action_time_str:
-            last_action_time = isoparse(last_action_time_str)
-            if last_action_time.tzinfo is None:
-                last_action_time = last_action_time.replace(tzinfo=timezone.utc)
-            elapsed_time = (now - last_action_time).total_seconds()
-            if elapsed_time < COOLDOWN_PERIOD:
-                remaining = int(COOLDOWN_PERIOD - elapsed_time)
-                logger.info(f"Skipping deployment to {region} due to cooldown period ({remaining} seconds remaining).")
-                action_results["skipped"].append({
-                    "region": region,
-                    "action": "deploy",
-                    "reason": f"Cooldown period ({remaining} seconds remaining)"
-                })
-                continue
-    
-        # Proceed to deploy
-        updated_state[region] = now.isoformat()
-    
-        if DRY_RUN:
-            logger.info(f"[DRY RUN] Would deploy machine to region: {region}")
-        else:
-            logger.info(f"Deploying machine to region: {region}")
-            # deploy_machine(region)
-        
-        action_results["deployed"].append(region)
-    
-    # Remove machines
+        try:
+            if not DRY_RUN:
+                subprocess.run(['fly', 'scale', 'count', '1', '--region', region], check=True)
+            action_results["deployed"].append(region)
+            updated_regions.append(region)
+        except Exception as e:
+            action_results["errors"].append({"region": region, "action": "deploy", "error": str(e)})
+
+    # Process removals
     for region in regions_to_remove:
-        last_action_time_str = current_state.get(region, None)
-        if last_action_time_str:
-            last_action_time = isoparse(last_action_time_str)
-            if last_action_time.tzinfo is None:
-                last_action_time = last_action_time.replace(tzinfo=timezone.utc)
-            elapsed_time = (now - last_action_time).total_seconds()
-            if elapsed_time < COOLDOWN_PERIOD:
-                remaining = int(COOLDOWN_PERIOD - elapsed_time)
-                logger.info(f"Skipping removal from {region} due to cooldown period ({remaining} seconds remaining).")
-                action_results["skipped"].append({
-                    "region": region,
-                    "action": "remove",
-                    "reason": f"Cooldown period ({remaining} seconds remaining)"
-                })
-                continue
-
-        # Proceed to remove
-        removed = updated_state.pop(region, None)
-
-        if removed is not None:
-            if DRY_RUN:
-                logger.info(f"[DRY RUN] Would remove machine from region: {region}")
-            else:
-                logger.info(f"Removing machine from region: {region}")
-                # remove_machine(region)
+        try:
+            if not DRY_RUN:
+                subprocess.run(['fly', 'scale', 'count', '0', '--region', region], check=True)
             action_results["removed"].append(region)
-        else:
-            logger.warning(f"Tried to remove {region}, but it was not found in deployment state.")
-            action_results["skipped"].append({
-                "region": region,
-                "action": "remove",
-                "reason": "Region not found in deployment state"
-            })
+            updated_regions.append(region)
+        except Exception as e:
+            action_results["errors"].append({"region": region, "action": "remove", "error": str(e)})
 
-    save_deployment_state(updated_state, dry_run=DRY_RUN)
-    return list(updated_state.keys()), action_results
+    return updated_regions, action_results
 
 def main():
-    metrics_fetcher = MetricsFetcher(dry_run=DRY_RUN)
-    app_name = metrics_fetcher.get_app_name()
+    config = Config.get_config()
+    metrics_client = MetricsClient()
+    auto_placer = AutoPlacer(config, metrics_client)
     
-    logger.info(f"Starting auto-placer execution for app: {app_name}")
-    logger.info(f"Collecting current traffic data for app: {app_name}...")
-    current_data = collect_region_traffic()
-    logger.debug(f"Current traffic data for app {app_name}: {current_data}")
-    
-    logger.info("Updating traffic history...")
-    update_traffic_history(current_data, dry_run=DRY_RUN)
-    
-    logger.info("Retrieving current deployment regions...")
-    current_state = load_deployment_state(dry_run=DRY_RUN)
-    current_regions = list(current_state.keys())
-    logger.info(f"Current deployment regions: {current_regions}")
-    
-    logger.info("Loading traffic history...")
-    traffic_history = load_traffic_history(dry_run=DRY_RUN)
-    
-    logger.info("Predicting placement actions...")
-    regions_to_deploy, regions_to_remove, skipped_in_prediction = predict_placement_actions(traffic_history, current_regions)
-    
-    logger.info(f"Regions to deploy machines: {regions_to_deploy}")
-    logger.info(f"Regions to remove machines: {regions_to_remove}")
-    
-    logger.info("Updating placements...")
-    updated_regions, action_results = update_placements(regions_to_deploy, regions_to_remove)
-    
-    # Merge skipped actions from prediction into action_results
-    action_results.setdefault("skipped", []).extend(skipped_in_prediction)
-    
-    # Add current and updated deployment state to the results
-    action_results["current_deployment"] = current_regions
-    action_results["updated_deployment"] = updated_regions
+    try:
+        action_results = auto_placer.process_traffic_data()
+        logger.info(f"Auto-placer execution completed. Results: {action_results}")
+        return action_results
+    except Exception as e:
+        logger.error(f"Error during auto-placer execution: {e}", exc_info=True)
+        raise
 
-    return action_results
+if __name__ == "__main__":
+    main()
