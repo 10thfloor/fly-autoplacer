@@ -13,10 +13,11 @@ type DashboardData =
   | { error: null; metrics: Traffic };
 
 export const meta: MetaFunction = () => [
-  { title: "Fly Auto-Placer · Regional traffic" },
+  { title: "Fly Auto-Placer · SQLite reader placement" },
   {
     name: "description",
-    content: "Regional traffic for your Fly Auto-Placer.",
+    content:
+      "Regional HTTP request demand for SQLite reader placement, with a planned Litestream integration. The dashboard currently reports request demand only.",
   },
 ];
 
@@ -104,10 +105,12 @@ export default function Index() {
             Fly Auto-Placer
           </p>
           <h1 className="text-4xl font-bold tracking-tight">
-            Regional traffic
+            SQLite reader demand
           </h1>
           <p className="mt-3 text-gray-600 dark:text-gray-400">
-            Request counts over the most recent five minutes.
+            Five-minute regional HTTP request counts to inform SQLite reader
+            placement. Litestream replication lag and reader readiness are not
+            measured.
           </p>
         </div>
         <a

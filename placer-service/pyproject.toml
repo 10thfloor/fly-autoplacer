@@ -1,7 +1,7 @@
 [project]
 name = "fly-placer"
 version = "0.1.0"
-description = "Place Fly.io applications using regional request traffic."
+description = "Traffic-driven placement for SQLite reader fleets on Fly.io."
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.115.14,<1",

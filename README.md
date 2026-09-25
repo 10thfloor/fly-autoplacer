@@ -1,6 +1,41 @@
 # Fly Auto-Placer
 
-Place a stateless Fly.io application's process group in regions with recent HTTP traffic. The service reads five-minute request counts, smooths observations, reconciles the app's current Machines, and adds or removes regional placements.
+**Place disposable SQLite read replicas near demand on Fly.io.**
+
+Fly Auto-Placer decides where to provision your reader fleet from recent regional HTTP traffic. The project focuses on apps that serve most requests from SQLite read replicas using **Litestream VFS**, with a persistent writer managed separately. Readers can appear where demand grows and be removed when demand subsides; their local database caches can be rebuilt from object storage.
+
+The controller reads five-minute request counts, smooths observations, reconciles a selected Fly app/process group, and adds or removes regional placements within configured limits. The intended benefit is faster reads near users without manually maintaining the same reader footprint everywhere. Latency and cost benefits still need to be measured for each application.
+
+## SQLite near users, one writer kept separate
+
+```mermaid
+flowchart LR
+    users[Users] --> readers[Regional SQLite readers]
+    readers -->|Writes and reads requiring immediate consistency| writer[Persistent writer]
+    writer -->|Litestream replication| storage[Object storage]
+    storage -->|Litestream VFS pages and updates| readers
+    metrics[Fly regional HTTP metrics] --> placer[Fly Auto-Placer]
+    placer -->|Provision and remove reader Machines| readers
+```
+
+The reference setup uses a **dedicated reader app** as the placement target. The writer, its volume, and its recovery policy stay outside the controller's scope. Reader Machines use disposable local caches or hydrated database copies and have no mounted volumes.
+
+Litestream's [VFS read replicas](https://litestream.io/guides/vfs/) fetch and cache pages from object storage; optional [hydration](https://litestream.io/guides/vfs-hydration/) builds a complete local database and keeps it updated. Reads may lag the writer, and cold pages still incur storage latency. This architecture suits applications that perform mostly reads and can handle replication delay explicitly.
+
+## What works today
+
+| Capability | Status |
+| --- | --- |
+| Regional placement from recent HTTP traffic | Implemented, with authenticated control, protected regions, limits, persistent cooldowns, and reconciliation |
+| Read-only regional traffic dashboard | Implemented; shows request demand, not database health |
+| Local demonstration | Implemented with synthetic metrics and simulated actions |
+| SQLite/Litestream reader application | Supplied by the operator today; a runnable reference app is planned |
+| Real-metrics observe-only mode | Planned; current dry-run does not use real traffic |
+| Replication freshness and warmup gates in placement decisions | Planned; the reader application must enforce its own readiness policy today |
+
+The controller does not install Litestream, configure replication, route database writes, or manage the writer. Its metrics currently count **all HTTP requests to the target app**, not database reads or process-group-specific traffic. A dedicated reader app keeps that signal aligned with the fleet being placed.
+
+Start with the [SQLite reader architecture and configuration guide](docs/sqlite-readers.md), the [example controller configuration](examples/sqlite-readers/placer-config.yml), and the [focused roadmap](FUTURE.md).
 
 The default configuration uses **synthetic metrics and simulated actions**. Live mode must be enabled explicitly. The dashboard is read-only; placement runs through an authenticated API call.
 
@@ -52,14 +87,14 @@ There is no background scheduler. Invoke `POST /trigger` from your scheduler onc
 
 ## Enable live placement
 
-The target must already have at least one Fly Launch-managed Machine in the selected process group, created with `fly deploy`. Unmanaged Machines are excluded, matching Fly's scaling command. Only stateless process groups are supported; attached volumes cause the controller to stop without changing placement.
+For the SQLite architecture, select the dedicated reader app and keep the writer in a separate app. The target must already have at least one Fly Launch-managed Machine in the selected process group, created with `fly deploy`. Unmanaged Machines are excluded, matching Fly's scaling command. Only disposable process groups are supported; attached volumes cause the controller to stop without changing placement. Reader caches must be reconstructible from object storage.
 
 Set these service environment variables:
 
 | Variable | Purpose |
 | --- | --- |
 | `PLACER_API_TOKEN` | Random bearer token required by the controller API |
-| `PLACER_TARGET_APP` | Exact application to scale |
+| `PLACER_TARGET_APP` | Exact reader application to scale; never the writer or controller |
 | `FLY_API_TOKEN` | Fly token with permission to read metrics and scale that target |
 | `FLY_PROMETHEUS_URL` | Organization metrics endpoint, e.g. `https://api.fly.io/prometheus/my-org` |
 
@@ -81,7 +116,7 @@ Missing metrics are **unknown**, not zero. An empty result or failed query makes
 
 Additions happen before removals. If an addition fails, or any protected region remains missing, removals are deferred. If required placements cannot be restored within `max_regions`, the cycle reports an error and makes no changes; increase the limit or reconcile placement manually. `min_regions` is a removal floor, not a target for adding arbitrary low-traffic regions.
 
-`always_running_regions` protects regional **placement** from this controller's removals. It does not override Fly's own autostop/autostart configuration or independently guarantee Machine health. Use the target application's Fly settings for those policies.
+`always_running_regions` protects regional **reader placement** from this controller's removals. It does not identify or protect a database writer, override Fly's own autostop/autostart configuration, or independently guarantee Machine health. Use the target application's Fly settings for those policies; keep writer management separate.
 
 ## State and recovery
 
