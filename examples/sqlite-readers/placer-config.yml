@@ -1,0 +1,31 @@
+# Example controller configuration for a DEDICATED disposable reader app.
+# Configure PLACER_TARGET_APP in placer-service/.env to name that reader app.
+# The persistent writer must be in a separate app and is never a placement target.
+# This does not install/configure Litestream or create a runnable reader application.
+dry_run: true
+
+# Illustrative values; measure reader warmup before choosing a production cooldown.
+# Cooldown is not a replication-readiness gate.
+cooldown_period: 900
+command_timeout: 120
+process_group: app
+data_dir: data
+
+short_term_window: 5
+long_term_window: 20
+alpha_short: 0.3
+alpha_long: 0.1
+
+# Total HTTP requests to the target app over five minutes, not SQL read counts.
+traffic_threshold: 50
+deployment_threshold: 10
+
+min_regions: 1
+max_regions: 3
+allowed_regions: [iad, fra, sea]
+excluded_regions: []
+
+# Required reader placement; this does not identify a database writer.
+# For a controlled trial, protect ALL currently serving reader regions and leave
+# room under max_regions for an additional region until its readiness is verified.
+always_running_regions: [iad]

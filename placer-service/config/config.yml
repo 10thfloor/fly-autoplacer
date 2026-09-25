@@ -4,6 +4,7 @@ dry_run: true
 # Last attempted action per region, including removals and uncertain timeouts.
 cooldown_period: 300
 command_timeout: 120
+# Process group in the dedicated reader app. Keep the writer in a separate app.
 process_group: app
 data_dir: data
 
@@ -25,6 +26,7 @@ max_regions: 5
 allowed_regions: [iad, cdg, lhr, fra, sea]
 excluded_regions: []
 
-# Required placements: create if missing and never remove.
-# Set this to your target application's required region(s) before live use.
+# Required reader placements: create if missing and never remove.
+# These do not identify or protect the writer, which is outside the target app.
+# Set this to your reader application's required region(s) before live use.
 always_running_regions: [fra]
