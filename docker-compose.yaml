@@ -1,28 +1,24 @@
-
-
 services:
   dashboard:
-    build:
-      context: ./placer-dashboard
-      dockerfile: Dockerfile
+    build: ./placer-dashboard
     ports:
-      - "8080:8080"
-    env_file:
-      - ./placer-dashboard/.env
+      - "127.0.0.1:8080:8080"
+    env_file: ./placer-dashboard/.env
+    environment:
+      PLACER_SERVICE_URL: http://placer-service:8000
     depends_on:
-      - placer-service
+      placer-service:
+        condition: service_healthy
+    restart: unless-stopped
 
   placer-service:
-    build:
-      context: ./placer-service
-      dockerfile: Dockerfile
+    build: ./placer-service
     ports:
-      - "8000:8000"
-    env_file:
-      - ./placer-service/.env
+      - "127.0.0.1:8000:8000"
+    env_file: ./placer-service/.env
     volumes:
-      - ./placer-service/data:/app/data
+      - placer-service-data:/app/data
+    restart: unless-stopped
 
 volumes:
   placer-service-data:
-

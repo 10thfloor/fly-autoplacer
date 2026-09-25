@@ -1,18 +1,76 @@
-# See https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/
+name: Validate and deploy
 
-name: Fly Deploy
 on:
+  pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: read
+
 jobs:
-  deploy:
-    name: Deploy app
+  tests:
     runs-on: ubuntu-latest
-    concurrency: deploy-group    # optional: ensure only one action runs at a time
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: placer-service/requirements-dev.txt
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
+        working-directory: placer-service
+      - run: python -m pytest
+        working-directory: placer-service
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: placer-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.7
+      - run: deno install --frozen --allow-scripts=npm:esbuild
+      - run: deno task build
+      - run: deno task typecheck
+      - run: deno task test
+
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - context: .
+            dockerfile: Dockerfile.fly
+          - context: placer-service
+            dockerfile: placer-service/Dockerfile
+          - context: placer-dashboard
+            dockerfile: placer-dashboard/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tests, dashboard, images]
+    runs-on: ubuntu-latest
+    concurrency: fly-production-deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.108
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

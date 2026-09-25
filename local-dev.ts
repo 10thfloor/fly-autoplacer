@@ -1,65 +1,63 @@
-// @ts-nocheck
+// Start both applications with their committed dependency locks.
+// Run: deno run -A local-dev.ts
+async function run(command: string, args: string[], cwd: string): Promise<void> {
+  const result = await new Deno.Command(command, {
+    args, cwd, stdin: "inherit", stdout: "inherit", stderr: "inherit",
+  }).output();
+  if (!result.success) throw new Error(`${command} failed with exit code ${result.code}`);
+}
 
-// This is a Deno script the executes the start of the placer-service and placer-dashboard
-// From the command line run `deno -A local-dev.ts`
-let node_modules: Deno.Process | null = null;
-let poetry_lock: Deno.Process | null = null;
+async function findPython(): Promise<string> {
+  for (const candidate of [Deno.env.get("PYTHON"), "python3.12", "python3.11", "python3"].filter(Boolean) as string[]) {
+    try {
+      const result = await new Deno.Command(candidate, {
+        args: ["-c", "import sys; sys.exit(not ((3, 11) <= sys.version_info[:2] < (3, 13)))"],
+        stdout: "null", stderr: "null",
+      }).output();
+      if (result.success) return candidate;
+    } catch { /* Try the next installed interpreter. */ }
+  }
+  throw new Error("Python 3.11 or 3.12 is required. Install one, or set PYTHON to its path.");
+}
 
-try {
-  node_modules = await Deno.stat("./placer-dashboard/node_modules");
-} catch (error) {
-  console.log("node_modules not found, installing dependencies");
-  node_modules = new Deno.Command("deno", {
-    args: ["install", "--allow-scripts"],
-    cwd: "./placer-dashboard",
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  }).spawn();
+const children: Deno.ChildProcess[] = [];
+let stopping = false;
+function stopChildren() {
+  if (stopping) return;
+  stopping = true;
+  for (const child of children) {
+    try { child.kill("SIGTERM"); } catch { /* Already exited. */ }
+  }
 }
 
 try {
-  poetry_lock = await Deno.stat("./placer-service/poetry.lock");
+  for (const path of ["placer-service/.env", "placer-dashboard/.env"]) {
+    try { await Deno.stat(path); }
+    catch { throw new Error(`Create ${path} using the README configuration before starting.`); }
+  }
+  const python = await findPython();
+  await run(python, ["-m", "venv", ".venv"], "./placer-service");
+  const venvPython = Deno.build.os === "windows" ? ".venv/Scripts/python.exe" : ".venv/bin/python";
+  await run(venvPython, ["-m", "pip", "install", "--require-hashes", "-r", "requirements-dev.txt"], "./placer-service");
+  await run("deno", ["install", "--frozen", "--allow-scripts=npm:esbuild"], "./placer-dashboard");
+
+  for (const signal of ["SIGINT", "SIGTERM"] as const) Deno.addSignalListener(signal, stopChildren);
+  children.push(new Deno.Command(venvPython, {
+    args: ["main.py"], cwd: "./placer-service", stdin: "inherit", stdout: "inherit", stderr: "inherit",
+  }).spawn());
+  children.push(new Deno.Command("deno", {
+    args: ["task", "dev"], cwd: "./placer-dashboard", stdin: "inherit", stdout: "inherit", stderr: "inherit",
+  }).spawn());
+  const first = await Promise.race(children.map((child) => child.status));
+  stopChildren();
+  const shutdownTimeout = setTimeout(() => {
+    for (const child of children) { try { child.kill("SIGKILL"); } catch { /* Already exited. */ } }
+  }, 10000);
+  await Promise.all(children.map((child) => child.status));
+  clearTimeout(shutdownTimeout);
+  Deno.exit(first.code);
 } catch (error) {
-  console.log("poetry.lock not found, installing dependencies");
-  poetry_lock = new Deno.Command("poetry", {
-    args: ["install"],
-    cwd: "./placer-service",
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  }).spawn();
-}
-
-const result = await Promise.all([node_modules.status, poetry_lock.status]);
-
-if (result[0] && result[0].code !== 0) {
-  console.log("Failed to install dependencies in Placer Dashboard");
+  stopChildren();
+  console.error(error instanceof Error ? error.message : String(error));
   Deno.exit(1);
 }
-
-if (result[1] && result[1].code !== 0) {
-  console.log("Failed to install dependencies in Placer Service");
-  Deno.exit(1);
-}
-
-// Start the placer-service
-const placerService = new Deno.Command("poetry", {
-  args: ["run", "python3", "main.py"],
-  cwd: "./placer-service",
-  stdin: "inherit",
-  stdout: "inherit",
-  stderr: "inherit",
-}).spawn();
-
-// Start the placer-dashboard
-const placerDashboard = new Deno.Command("deno", {
-  args: ["task", "dev"],
-  cwd: "./placer-dashboard",
-  stdin: "inherit",
-  stdout: "inherit",
-  stderr: "inherit",
-}).spawn();
-
-// Wait for both processes to exit
-await Promise.all([placerService.status, placerDashboard.status]);

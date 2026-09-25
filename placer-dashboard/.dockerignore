@@ -1,1 +1,8 @@
-fly.toml
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+.git
+node_modules
+build

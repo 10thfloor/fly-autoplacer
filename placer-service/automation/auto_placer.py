@@ -1,195 +1,145 @@
-"""
-Module: auto_placer.py
-Description: Automates the placement of machines in Fly.io regions based on traffic patterns.
-"""
+"""Reconcile observed traffic with safe, bounded regional placements."""
 
+from datetime import datetime, timezone
 import logging
 import os
-import subprocess
-import yaml
-import json
-from datetime import datetime, timezone
-from monitoring.traffic_monitor import collect_region_traffic
-from utils.history_manager import update_traffic_history
+
+from automation.fly_client import FlyClient, FlyError
 from prediction.placement_predictor import PlacementPredictor
-from utils.state_manager import load_deployment_state, save_deployment_state
-from utils.fancy_logger import get_logger
-from utils.history_manager import load_traffic_history
-from dateutil.parser import isoparse
 from utils.config_loader import Config
-from logging.handlers import RotatingFileHandler
+from utils.history_manager import update_traffic_history, calculate_region_averages
 from utils.metrics_fetcher import MetricsFetcher
-from metrics.metrics_client import MetricsClient
+from utils.state_manager import load_placement_state, save_placement_state, placement_lock
 
-# Load configuration
-config = Config.get_config()
 
-# Set up logging
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
-# Create logs directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
-
-# Create console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-
-# Create file handler
-file_handler = RotatingFileHandler(
-    'data/logs/auto_placer.log',
-    maxBytes=1024 * 1024,  # 1 MB
-    backupCount=5
-)
-file_handler.setLevel(logging.INFO)
-
-# Create formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-file_handler.setFormatter(formatter)
-
-# Add the handlers to the logger
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
-
-DRY_RUN = config['dry_run']
-COOLDOWN_PERIOD = int(config['cooldown_period'])
-ALLOWED_REGIONS = config.get('allowed_regions', [])
-EXCLUDED_REGIONS = config.get('excluded_regions', [])
-ALWAYS_RUNNING_REGIONS = config.get('always_running_regions', [])
-
-FLY_APP_NAME = os.getenv("FLY_APP_NAME")
-
-# If it's a dry run, don't actually deploy or remove machines
-if DRY_RUN:
-    logger.info("Dry run mode is enabled. No changes will be applied.")
-    # set the app name to the current directory name
-    FLY_APP_NAME = os.path.basename(os.getcwd())
 
 class AutoPlacer:
-    def __init__(self, config):
-        self.dry_run = config.get('dry_run', True)
-        self.excluded_regions = config.get('excluded_regions', [])
-        self.allowed_regions = config.get('allowed_regions', [])  # Add this line
-        self.always_running_regions = config.get('always_running_regions', [])
-        self.predictor = PlacementPredictor(config)
-        self.logger = get_logger(__name__)
+    def __init__(self, config, *, metrics_fetcher=None, fly_client=None, clock=None):
+        self.config = Config.validate(config)
+        self.dry_run = self.config["dry_run"]
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.metrics = metrics_fetcher or MetricsFetcher(dry_run=self.dry_run, config=self.config)
+        self.app_name = self.metrics.get_app_name()
+        if not self.dry_run:
+            target = os.environ.get("PLACER_TARGET_APP")
+            if not target or target != self.app_name:
+                raise ValueError("Live placement requires an explicit PLACER_TARGET_APP")
+        self.scope = {"app_name": self.app_name, "process_group": self.config["process_group"],
+                      "data_dir": self.config["data_dir"]}
+        self.fly = fly_client or FlyClient(self.app_name, self.config["process_group"],
+                                           self.config["command_timeout"])
+        self.predictor = PlacementPredictor(self.config)
 
     async def process_traffic_data(self):
-        """Main processing loop"""
-        metrics_fetcher = MetricsFetcher(dry_run=self.dry_run)
-        app_name = metrics_fetcher.get_app_name()
-        
-        self.logger.info(f"Starting auto-placer execution for app: {app_name}")
-        
-        # Collect and process traffic data
-        current_data = collect_region_traffic()
-        update_traffic_history(current_data, dry_run=self.dry_run)
-        
-        # Get current state
-        current_state = load_deployment_state(dry_run=self.dry_run)
-        current_regions = list(current_state.keys())
-        
-        # Load traffic history
-        traffic_history = load_traffic_history(dry_run=self.dry_run)
-        
-        # Process each region
-        actions_needed = []
-        for region, traffic_stats in traffic_history.items():
-            if self._should_process_region(region):
-                action = self.predictor.predict_placement_actions(region, traffic_stats)
-                if action:
-                    actions_needed.append((region, action))
+        # File locking also serializes separate workers sharing this data directory.
+        with placement_lock(self.dry_run, **self.scope):
+            state = load_placement_state(self.dry_run, **self.scope)
+            if not self.dry_run:
+                actual = self.fly.regions()
+                state["deployed"] = {region: state["deployed"].get(region) for region in actual}
 
-        # Execute the needed actions
-        return await self._execute_actions(actions_needed, current_state)
+            traffic = self.metrics.fetch_region_traffic()
+            if not traffic:
+                return self._result(state, [], {"deployed": [], "removed": [], "errors": [],
+                    "skipped": [{"region": "*", "action": "none", "reason": "No traffic observations; placement left unchanged"}]})
 
-    def _should_process_region(self, region: str) -> bool:
-        """Determine if a region should be processed based on configuration."""
-        if region in self.excluded_regions:
+            history = update_traffic_history(
+                traffic, self.dry_run, **self.scope, max_entries=self.config["long_term_window"] + 1)
+            averages = calculate_region_averages(history, self.config)
+            actions = []
+            # Protected regions are required placements even without a regional sample.
+            for region in self.config["always_running_regions"]:
+                if region not in state["deployed"]:
+                    actions.append((region, "scale_up"))
+            for region, values in sorted(averages.items(), key=lambda item: (-item[1]["short"], item[0])):
+                if self._should_process_region(region):
+                    action = self.predictor.predict_placement_actions(region, values)
+                    if action and (region, action) not in actions:
+                        actions.append((region, action))
+            # Validate storage before the first possible infrastructure mutation.
+            save_placement_state(state, self.dry_run, **self.scope)
+            return self._execute_actions(actions, state)
+
+    def _should_process_region(self, region):
+        allowed = self.config["allowed_regions"]
+        return region not in self.config["excluded_regions"] and (not allowed or region in allowed)
+
+    def _is_in_cooldown(self, region, state):
+        timestamp = state["last_actions"].get(region)
+        if not timestamp:
             return False
-        if self.allowed_regions and region not in self.allowed_regions:
-            return False
-        return True
+        previous = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if previous.tzinfo is None:
+            previous = previous.replace(tzinfo=timezone.utc)
+        return (self.clock() - previous).total_seconds() < self.config["cooldown_period"]
 
-    async def _execute_actions(self, actions_needed, current_state):
-        """Execute the required placement actions."""
-        regions_to_deploy = []
-        regions_to_remove = []
-        
-        for region, action in actions_needed:
-            if action == 'scale_up' and region not in current_state:
-                regions_to_deploy.append(region)
-            elif action == 'scale_down' and region in current_state:
-                regions_to_remove.append(region)
-        
-        updated_regions, action_results = update_placements(
-            regions_to_deploy, 
-            regions_to_remove
-        )
-        
-        return {
-            "actions_taken": action_results,
-            "updated_regions": updated_regions,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+    def _execute_actions(self, actions, state):
+        results = {"deployed": [], "removed": [], "skipped": [], "errors": []}
+        updated = []
+        missing = set(self.config["always_running_regions"]) - state["deployed"].keys()
+        maximum = self.config["max_regions"]
+        if maximum is not None and len(state["deployed"]) + len(missing) > maximum:
+            results["errors"] = [{"region": region, "action": "scale_up",
+                "error": "Cannot restore protected region within max_regions; increase the limit or reconcile placement"}
+                for region in sorted(missing)]
+            if results["errors"]:
+                return self._result(state, updated, results)
+        # Add capacity before removing capacity. Required regions were queued first.
+        actions = sorted(dict.fromkeys(actions), key=lambda item: item[1] != "scale_up")
+        for region, action in actions:
+            reason = None
+            if action not in ("scale_up", "scale_down"):
+                reason = "Unknown action"
+            elif not self._should_process_region(region):
+                reason = "Region is not permitted by configuration"
+            elif action == "scale_down" and region in self.config["always_running_regions"]:
+                reason = "Region is protected by always_running_regions"
+            elif self._is_in_cooldown(region, state):
+                reason = "Region is in cooldown"
+            elif action == "scale_up" and region in state["deployed"]:
+                reason = "Region is already deployed"
+            elif action == "scale_down" and region not in state["deployed"]:
+                reason = "Region is not deployed"
+            elif action == "scale_down" and set(self.config["always_running_regions"]) - state["deployed"].keys():
+                reason = "Removal deferred until all protected regions are deployed"
+            elif action == "scale_up" and self.config["max_regions"] is not None and len(state["deployed"]) >= self.config["max_regions"]:
+                reason = "Maximum region count reached"
+            elif action == "scale_down" and len(state["deployed"]) <= self.config["min_regions"]:
+                reason = "Minimum region count must be preserved"
+            elif action == "scale_down" and results["errors"]:
+                reason = "Removal deferred because an earlier operation failed"
+            if reason:
+                results["skipped"].append({"region": region, "action": action, "reason": reason})
+                continue
 
-    def _is_in_cooldown(self, region: str, current_state: dict) -> bool:
-        """Check if a region is in cooldown period"""
-        last_action_time_str = current_state.get(region)
-        if not last_action_time_str:
-            return False
+            timestamp = self.clock().isoformat()
+            # Persist the attempt before calling Fly. A timeout may have applied the
+            # command; retain cooldown while the next run reconciles actual state.
+            state["last_actions"][region] = timestamp
+            save_placement_state(state, self.dry_run, **self.scope)
+            try:
+                if not self.dry_run:
+                    self.fly.scale_region(region, 1 if action == "scale_up" else 0)
+            except FlyError as exc:
+                logger.warning("Placement action failed: app=%s process=%s region=%s action=%s: %s",
+                               self.app_name, self.config["process_group"], region, action, exc)
+                results["errors"].append({"region": region, "action": action, "error": str(exc)})
+                continue
+            if action == "scale_up":
+                state["deployed"][region] = timestamp
+                results["deployed"].append(region)
+            else:
+                del state["deployed"][region]
+                results["removed"].append(region)
+            save_placement_state(state, self.dry_run, **self.scope)
+            logger.info("Placement action completed: app=%s process=%s region=%s action=%s dry_run=%s",
+                        self.app_name, self.config["process_group"], region, action, self.dry_run)
+            updated.append(region)
+        return self._result(state, updated, results)
 
-        last_action_time = isoparse(last_action_time_str)
-        if last_action_time.tzinfo is None:
-            last_action_time = last_action_time.replace(tzinfo=timezone.utc)
-        
-        elapsed_time = (datetime.now(timezone.utc) - last_action_time).total_seconds()
-        return elapsed_time < self.cooldown_period
-
-def update_placements(regions_to_deploy, regions_to_remove):
-    """Update machine placements in Fly.io regions."""
-    action_results = {
-        "deployed": [],
-        "removed": [],
-        "skipped": [],
-        "errors": []
-    }
-    updated_regions = []
-
-    # Process deployments
-    for region in regions_to_deploy:
-        try:
-            if not DRY_RUN:
-                subprocess.run(['fly', 'scale', 'count', '1', '--region', region], check=True)
-            action_results["deployed"].append(region)
-            updated_regions.append(region)
-        except Exception as e:
-            action_results["errors"].append({"region": region, "action": "deploy", "error": str(e)})
-
-    # Process removals
-    for region in regions_to_remove:
-        try:
-            if not DRY_RUN:
-                subprocess.run(['fly', 'scale', 'count', '0', '--region', region], check=True)
-            action_results["removed"].append(region)
-            updated_regions.append(region)
-        except Exception as e:
-            action_results["errors"].append({"region": region, "action": "remove", "error": str(e)})
-
-    return updated_regions, action_results
-
-def main():
-    config = Config.get_config()
-    metrics_client = MetricsClient()
-    auto_placer = AutoPlacer(config, metrics_client)
-    
-    try:
-        action_results = auto_placer.process_traffic_data()
-        logger.info(f"Auto-placer execution completed. Results: {action_results}")
-        return action_results
-    except Exception as e:
-        logger.error(f"Error during auto-placer execution: {e}", exc_info=True)
-        raise
-
-if __name__ == "__main__":
-    main()
+    def _result(self, state, updated, results):
+        return {"app": self.app_name, "process_group": self.config["process_group"],
+                "dry_run": self.dry_run, "actions_taken": results, "updated_regions": updated,
+                "current_regions": sorted(state["deployed"]), "timestamp": self.clock().isoformat()}
