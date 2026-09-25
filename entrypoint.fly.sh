@@ -1,20 +1,20 @@
+#!/bin/sh
+set -eu
 
-#!/bin/bash
-
-if [ "$1" = "dashboard" ]; then
-  echo "Starting Dashboard..."
-  cd /app/placer-dashboard
-  deno task start
-
-elif [ "$1" = "placer" ]; then
-  echo "Starting Placer Service..."
-  # Create logs directory if it doesn't exist
-  mkdir -p /app/placer-service/data/logs
-  
-  cd /app/placer-service
-  poetry run python3 main.py
-
-else
-  echo "Unknown process group: $1"
-  exit 1
-fi
+case "${1:-placer}" in
+  dashboard)
+    cd /app/placer-dashboard
+    exec gosu app deno serve -A --frozen --cached-only --host 0.0.0.0 --port 8080 ./server.ts
+    ;;
+  placer)
+    cd /app/placer-service
+    # Fly mounts a new persistent volume as root. Drop privileges after initialization.
+    mkdir -p data
+    chown -R app:app data
+    exec gosu app python main.py
+    ;;
+  *)
+    echo "Unknown process group: $1" >&2
+    exit 1
+    ;;
+esac

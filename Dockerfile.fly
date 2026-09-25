@@ -1,58 +1,40 @@
-# Use a single base image with Python 3.11
-FROM python:3.11-slim
-
-# Install required packages
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl \
-        ca-certificates \
-        unzip && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Deno
-RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
-
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 - && \
-    ln -s /root/.local/bin/poetry /usr/local/bin/poetry
-
-# Set environment variables
-ENV POETRY_VERSION=1.4.0
-ENV POETRY_VIRTUALENVS_CREATE=false
-ENV PYTHONUNBUFFERED=1
-ENV DENO_INSTALL="/usr/local"
-ENV PATH="${DENO_INSTALL}/bin:${PATH}"
-
-# Set working directory for placer-service
-WORKDIR /app/placer-service
-
-# Copy only the dependency files for placer-service and install dependencies
-COPY placer-service/pyproject.toml ./
-# Copy the rest of the placer-service code
-COPY placer-service/ ./
-
-RUN poetry install --no-dev --no-interaction --no-ansi
-
-# Set working directory for placer-dashboard
+# syntax=docker/dockerfile:1
+FROM denoland/deno:2.9.7 AS dashboard-build
+ENV DENO_DIR=/deno-dir
 WORKDIR /app/placer-dashboard
-
-# Copy Node.js dependency files and install dependencies
-COPY placer-dashboard/package.json ./
-COPY placer-dashboard/deno.json ./
-
-# Cache Deno dependencies
-RUN deno install --allow-scripts
-RUN deno cache deno.json
-
-# Copy the rest of the placer-dashboard code and build
+COPY placer-dashboard/deno.json placer-dashboard/deno.lock placer-dashboard/package.json ./
+RUN deno install --frozen --allow-scripts=npm:esbuild
 COPY placer-dashboard/ ./
-RUN deno task build
+RUN deno task build && deno cache --frozen server.ts && deno eval --frozen 'await import("./server.ts")'
 
-# Copy the entrypoint script and make it executable
+FROM python:3.11.14-slim-bookworm AS runtime
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gosu && rm -rf /var/lib/apt/lists/*
+ARG FLYCTL_VERSION=0.4.108
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in amd64) arch=x86_64 ;; arm64) arch=arm64 ;; *) exit 1 ;; esac; \
+    archive="flyctl_${FLYCTL_VERSION}_Linux_${arch}.tar.gz"; \
+    base="https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}"; \
+    curl -fsSL "$base/$archive" -o "/tmp/$archive"; \
+    curl -fsSL "$base/flyctl_${FLYCTL_VERSION}_checksums.txt" -o /tmp/fly-checksums; \
+    cd /tmp; grep " $archive$" fly-checksums | sha256sum -c -; \
+    tar -xzf "$archive" -C /usr/local/bin flyctl; \
+    ln -s /usr/local/bin/flyctl /usr/local/bin/fly; \
+    rm -f "$archive" fly-checksums
+
+WORKDIR /app/placer-service
+COPY placer-service/requirements.txt ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
+COPY placer-service/ ./
+COPY --from=dashboard-build /usr/bin/deno /usr/local/bin/deno
+COPY --from=dashboard-build --chown=10001:10001 /deno-dir /deno-dir
+COPY --from=dashboard-build --chown=10001:10001 /app/placer-dashboard /app/placer-dashboard
+ENV DENO_DIR=/deno-dir PLACER_SERVICE_URL=http://placer.process.fly-auto-placer.internal:8000
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app && \
+    mkdir -p /app/placer-service/data && chown app:app /app/placer-service/data
 COPY entrypoint.fly.sh /entrypoint.fly.sh
-RUN chmod +x /entrypoint.fly.sh
-
-ENV PLACER_SERVICE_URL="http://fly-auto-placer.internal:8080"
-
-# Set the entrypoint
-ENTRYPOINT ["/bin/sh", "/entrypoint.fly.sh"]
+RUN chmod 755 /entrypoint.fly.sh
+EXPOSE 8000 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS http://localhost:8000/health || curl -fsS http://localhost:8080/health || exit 1
+ENTRYPOINT ["/entrypoint.fly.sh"]
+CMD ["placer"]

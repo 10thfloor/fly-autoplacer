@@ -1,16 +1,30 @@
-import logging
-import os
+"""Logging setup without filesystem side effects during imports."""
 
-# Create logs directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+
+def configure_logging(data_dir="data"):
+    log_file = Path(data_dir).resolve() / "logs" / "auto_placer.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    for handler in list(logger.handlers):
+        if getattr(handler, "_autoplacer_file", False):
+            if handler.baseFilename == str(log_file):
+                return
+            logger.removeHandler(handler)
+            handler.close()
+    handler = RotatingFileHandler(log_file, maxBytes=1024 * 1024, backupCount=5)
+    handler._autoplacer_file = True
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    logger.addHandler(handler)
+
 
 def log_action(action, region, dry_run):
-    if dry_run:
-        logging.info(f"[DRY RUN] Would {action} in region: {region}")
-    else:
-        logging.info(f"{action.capitalize()} in region: {region}")
+    logging.info("%s%s in region: %s", "[DRY RUN] Would " if dry_run else "", action, region)
+
 
 def get_logger(name):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    return logger
+    return logging.getLogger(name)

@@ -1,82 +1,26 @@
-import unittest
-from unittest.mock import patch
-from datetime import datetime, timedelta, timezone
-from automation.auto_placer import update_placements
+from datetime import timedelta
+from test_auto_placer import make_placer, NOW
+from utils.state_manager import load_placement_state
 
-class TestCooldownPeriod(unittest.TestCase):
-    @patch('automation.auto_placer.load_deployment_state')
-    @patch('automation.auto_placer.save_deployment_state')
-    @patch('automation.auto_placer.subprocess.run')
-    def test_deploy_within_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.now(timezone.utc)
-        region = 'ams'
-        # Mock the configuration
-        with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
-            # Mock deployment state with recent action
-            mock_load_state.return_value = {region: (now - timedelta(seconds=100)).isoformat()}
-            regions_to_deploy = [region]
-            regions_to_remove = []
 
-            update_placements(regions_to_deploy, regions_to_remove)
+def test_recent_deployment_cannot_be_removed(tmp_path, monkeypatch):
+    placer, fly = make_placer(tmp_path, monkeypatch)
+    state = {"deployed": {"fra": None, "iad": NOW.isoformat()},
+             "last_actions": {"iad": NOW.isoformat()}}
+    result = placer._execute_actions([("iad", "scale_down")], state)
+    assert result["actions_taken"]["skipped"][0]["reason"] == "Region is in cooldown"
+    fly.scale_region.assert_not_called()
 
-            # Should not deploy due to cooldown
-            mock_subprocess_run.assert_not_called()
-            mock_save_state.assert_not_called()
 
-    @patch('automation.auto_placer.load_deployment_state')
-    @patch('automation.auto_placer.save_deployment_state')
-    @patch('automation.auto_placer.subprocess.run')
-    def test_deploy_after_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.now(timezone.utc)
-        region = 'ams'
-        with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
-            # Mock deployment state with action outside cooldown
-            mock_load_state.return_value = {region: (now - timedelta(seconds=400)).isoformat()}
-            regions_to_deploy = [region]
-            regions_to_remove = []
-
-            update_placements(regions_to_deploy, regions_to_remove)
-
-            # Should deploy since cooldown has passed
-            mock_subprocess_run.assert_called_once()
-            mock_save_state.assert_called_once()
-
-    @patch('automation.auto_placer.load_deployment_state')
-    @patch('automation.auto_placer.save_deployment_state')
-    @patch('automation.auto_placer.subprocess.run')
-    def test_remove_within_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.now(timezone.utc)
-        region = 'iad'
-        with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
-            # Mock deployment state with recent action
-            mock_load_state.return_value = {region: (now - timedelta(seconds=100)).isoformat()}
-            regions_to_deploy = []
-            regions_to_remove = [region]
-
-            update_placements(regions_to_deploy, regions_to_remove)
-
-            # Should not remove due to cooldown
-            mock_subprocess_run.assert_not_called()
-            mock_save_state.assert_not_called()
-
-    @patch('automation.auto_placer.load_deployment_state')
-    @patch('automation.auto_placer.save_deployment_state')
-    @patch('automation.auto_placer.subprocess.run')
-    def test_remove_after_cooldown(self, mock_subprocess_run, mock_save_state, mock_load_state):
-        now = datetime.now(timezone.utc)
-        region = 'iad'
-        with patch('automation.auto_placer.COOLDOWN_PERIOD', 300):
-            with patch('automation.auto_placer.ALWAYS_RUNNING_REGIONS', []):
-                # Mock deployment state with action outside cooldown
-                mock_load_state.return_value = {region: (now - timedelta(seconds=400)).isoformat()}
-                regions_to_deploy = []
-                regions_to_remove = [region]
-
-                update_placements(regions_to_deploy, regions_to_remove)
-
-                # Should remove since cooldown has passed
-                mock_subprocess_run.assert_called_once()
-                mock_save_state.assert_called_once()
-
-if __name__ == '__main__':
-    unittest.main()
+def test_removed_region_keeps_cooldown_across_instances(tmp_path, monkeypatch):
+    placer, fly = make_placer(tmp_path, monkeypatch)
+    state = {"deployed": {"fra": None, "iad": None}, "last_actions": {}}
+    placer._execute_actions([("iad", "scale_down")], state)
+    second, second_fly = make_placer(tmp_path, monkeypatch)
+    saved = load_placement_state(False, **second.scope)
+    result = second._execute_actions([("iad", "scale_up")], saved)
+    assert result["actions_taken"]["skipped"][0]["reason"] == "Region is in cooldown"
+    second_fly.scale_region.assert_not_called()
+    second.clock = lambda: NOW + timedelta(seconds=300)
+    second._execute_actions([("iad", "scale_up")], saved)
+    second_fly.scale_region.assert_called_once_with("iad", 1)

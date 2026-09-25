@@ -1,45 +1,60 @@
-import unittest
-from unittest.mock import mock_open, patch
-from utils.state_manager import load_deployment_state, save_deployment_state
 import json
-from utils.config_loader import Config
+from pathlib import Path
+from unittest.mock import patch
 
-config = Config.get_config()
-DRY_RUN = config['dry_run']
+import pytest
 
-class TestStateManager(unittest.TestCase):
-    def test_load_deployment_state_dict_format(self):
-        # Mock data in new dict format with timestamps
-        mock_data = json.dumps({'iad': '2024-10-01T08:30:00Z', 'cdg': None})
-        with patch('builtins.open', mock_open(read_data=mock_data)) as mocked_file:
-            with patch('os.path.exists') as mocked_exists:
-                mocked_exists.return_value = True
-                state = load_deployment_state(dry_run=DRY_RUN)
-                self.assertEqual(state, {'iad': '2024-10-01T08:30:00Z', 'cdg': None})
+from utils.state_manager import (
+    get_deployment_state_file, load_placement_state, save_placement_state,
+    load_deployment_state, placement_lock,
+)
 
-    def test_load_deployment_state_list_format(self):
-        # Mock data in old list format
-        mock_data = json.dumps(['iad', 'cdg'])
-        with patch('builtins.open', mock_open(read_data=mock_data)) as mocked_file:
-            with patch('os.path.exists') as mocked_exists:
-                mocked_exists.return_value = True
-                state = load_deployment_state(dry_run=DRY_RUN)
-                self.assertEqual(state, {'iad': None, 'cdg': None})
 
-    def test_load_deployment_state_no_file(self):
-        with patch('os.path.exists') as mocked_exists:
-            mocked_exists.return_value = False
-            state = load_deployment_state(dry_run=DRY_RUN)
-            self.assertEqual(state, {})
+def test_state_isolated_by_target_process_and_mode(tmp_path):
+    scope = dict(data_dir=str(tmp_path), app_name="target", process_group="web")
+    state = {"deployed": {"iad": None}, "last_actions": {"cdg": "2026-01-01T00:00:00Z"}}
+    save_placement_state(state, True, **scope)
+    assert load_deployment_state(True, **scope) == {"iad": None}
+    assert load_placement_state(True, **scope)["last_actions"]["cdg"].endswith("+00:00")
+    assert not load_deployment_state(False, **scope)
+    assert not load_deployment_state(True, **{**scope, "app_name": "other"})
+    assert not load_deployment_state(True, **{**scope, "process_group": "worker"})
 
-    def test_save_deployment_state(self):
-        test_state = {'iad': '2024-10-01T08:30:00Z', 'cdg': None}
-        with patch('builtins.open', mock_open()) as mocked_file:
-            with patch('os.makedirs') as mocked_makedirs:
-                save_deployment_state(test_state)
-                mocked_file.assert_called_with('data/deployment_state.json', 'w')
-                file_handle = mocked_file()
-                file_handle.write.assert_called_once_with(json.dumps(test_state, indent=2))
 
-if __name__ == '__main__':
-    unittest.main()
+def test_atomic_failure_preserves_previous_state(tmp_path):
+    scope = dict(data_dir=str(tmp_path))
+    old = {"deployed": {"iad": None}, "last_actions": {}}
+    save_placement_state(old, **scope)
+    with patch("utils.state_manager.os.replace", side_effect=OSError("disk error")):
+        with pytest.raises(OSError):
+            save_placement_state({"deployed": {}, "last_actions": {}}, **scope)
+    assert load_deployment_state(**scope) == {"iad": None}
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+@pytest.mark.parametrize("content", ["", "{", "null", '{"version": 2}', '{"iad": "invalid"}'])
+def test_corrupt_state_fails_closed(tmp_path, content):
+    Path(get_deployment_state_file(data_dir=tmp_path)).write_text(content)
+    with pytest.raises(ValueError, match="Cannot read placement state"):
+        load_placement_state(data_dir=tmp_path)
+
+
+@pytest.mark.parametrize("legacy", [["iad"], {"iad": None}])
+def test_legacy_membership_is_read(legacy, tmp_path):
+    Path(get_deployment_state_file(data_dir=tmp_path)).write_text(json.dumps(legacy))
+    assert load_deployment_state(data_dir=tmp_path) == {"iad": None}
+
+
+def test_overlapping_cycles_are_rejected_and_lock_is_released(tmp_path):
+    with placement_lock(data_dir=tmp_path):
+        with pytest.raises(BlockingIOError):
+            with placement_lock(data_dir=tmp_path):
+                pytest.fail("Overlapping cycle acquired a lock")
+    with placement_lock(data_dir=tmp_path):
+        pass
+
+
+@pytest.mark.parametrize("app_name", ["../app", "", "app/name"])
+def test_invalid_scope_cannot_escape_data_directory(app_name, tmp_path):
+    with pytest.raises(ValueError):
+        load_placement_state(app_name=app_name, data_dir=tmp_path)

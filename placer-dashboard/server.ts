@@ -5,12 +5,21 @@ import { join } from "@std/path/join";
 
 const handleRequest = createRequestHandler(
   (await import("./build/server/index.js")) as ServerBuild,
-  "production"
+  "production",
 );
 
 export default {
   fetch: async (request: Request) => {
     const pathname = new URL(request.url).pathname;
+
+    if (pathname === "/health") {
+      return new Response("ok", {
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
 
     try {
       const filePath = join("./build/client", pathname);
@@ -25,7 +34,7 @@ export default {
       if (pathname.startsWith("/assets/")) {
         response.headers.set(
           "cache-control",
-          "public, max-age=31536000, immutable"
+          "public, max-age=31536000, immutable",
         );
       } else {
         response.headers.set("cache-control", "public, max-age=600");
@@ -35,7 +44,7 @@ export default {
       response.headers.set("X-Frame-Options", "DENY");
       response.headers.set(
         "Referrer-Policy",
-        "strict-origin-when-cross-origin"
+        "strict-origin-when-cross-origin",
       );
 
       return response;

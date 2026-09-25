@@ -1,251 +1,129 @@
 # Fly Auto-Placer
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![Deno Version](https://img.shields.io/badge/deno-2.0%2B-blue.svg)](https://deno.land/)
+Place a stateless Fly.io application's process group in regions with recent HTTP traffic. The service reads five-minute request counts, smooths observations, reconciles the app's current Machines, and adds or removes regional placements.
 
-Fly Auto-Placer is a service that automatically places your [Fly.io](https://fly.io) applications in regions where traffic is originating. By leveraging traffic data from Fly.io's metrics API, it dynamically adds and removes regions based on current traffic patterns.
+The default configuration uses **synthetic metrics and simulated actions**. Live mode must be enabled explicitly. The dashboard is read-only; placement runs through an authenticated API call.
 
-**Note:** This project is currently a work in progress (POC).
+## Start locally
 
-## Getting Started
+Use Python 3.11 or 3.12 and Deno 2.9.7 on macOS/Linux, or use Docker. Poetry is no longer required.
 
-You'll need to install the following tools:
+1. Copy the environment examples:
 
-- [Deno v2+](https://deno.com/)
-- [Poetry](https://python-poetry.org/)
-- [Fly.io Account + CLI](https://fly.io)
+   ```sh
+   cp placer-service/.env.example placer-service/.env
+   cp placer-dashboard/.env.example placer-dashboard/.env
+   ```
 
-## Configuration
+2. Generate a token with `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`. Put the same value in both files as `PLACER_API_TOKEN`. Keep it private. Leave `dry_run: true` for the first run.
+3. Start both apps:
 
-### Environment Variables
+   ```sh
+   deno run -A local-dev.ts
+   ```
 
-Create a `.env` file in the `placer-service` root with the following variables:
+The launcher creates a Python environment, installs the committed dependency locks, and starts the API on port 8000 and dashboard on port 8080. Open [the dashboard](http://localhost:8080). The YAML configuration is re-read and validated on each request; invalid settings stop that request without using the old configuration. Restart the processes after changing environment files or tokens.
 
-```dotenv
-FLY_API_TOKEN=your_fly_api_token
-FLY_PROMETHEUS_URL=https://api.fly.io/prometheus/personal
-FLY_APP_NAME=your_fly_app_name
+To run with Docker instead, after configuring the same two environment files:
+
+```sh
+docker compose up --build
 ```
 
-Create a `.env` file in the `placer-dashboard` root with the following variables:
+Compose binds both published ports to localhost and retains placement history in a named volume. Rebuild/recreate the service after changing the image's configuration file.
 
-```dotenv
-PLACER_SERVICE_URL=http://localhost:8000
+## Trigger a placement cycle
+
+Export the same API token in your shell, then run:
+
+```sh
+curl --fail-with-body -X POST http://localhost:8000/trigger \
+  -H "Authorization: Bearer $PLACER_API_TOKEN"
 ```
 
-## Local Development
+Each response includes the target, mode, current regions, completed actions, skipped actions with reasons, and any action errors. Dry-run actions are persisted separately and never invoke Fly.
 
-Installs dependencies in both apps and starts up the servers.
+- `GET /health`: public startup/configuration health, no credentials returned.
+- `GET /metrics`: authenticated current regional counts and a dry-run indicator.
+- `POST /trigger`: authenticated placement cycle.
+- HTTP 401: missing/invalid token; 409: another cycle is running; 502: metrics, reconciliation, or an action failed; 503: invalid runtime configuration.
 
-```bash
-deno -A local-dev.ts
+There is no background scheduler. Invoke `POST /trigger` from your scheduler once per minute for continuous operation. Do not overlap controllers: run **one placer replica per target app/process group**, with persistent data. The local file lock serializes requests and workers sharing that volume; it does not coordinate independent volumes.
+
+## Enable live placement
+
+The target must already have at least one Fly Launch-managed Machine in the selected process group, created with `fly deploy`. Unmanaged Machines are excluded, matching Fly's scaling command. Only stateless process groups are supported; attached volumes cause the controller to stop without changing placement.
+
+Set these service environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `PLACER_API_TOKEN` | Random bearer token required by the controller API |
+| `PLACER_TARGET_APP` | Exact application to scale |
+| `FLY_API_TOKEN` | Fly token with permission to read metrics and scale that target |
+| `FLY_PROMETHEUS_URL` | Organization metrics endpoint, e.g. `https://api.fly.io/prometheus/my-org` |
+
+`FLY_APP_NAME` is **not** accepted as the live target: Fly injects the controller's own app name into that variable. Every scaling command explicitly selects `PLACER_TARGET_APP` and the configured process group.
+
+In `placer-service/config/config.yml`, choose `process_group`, permitted regions, `always_running_regions`, and the region limits for your application. Then set `dry_run: false`. Live mode requires at least one protected region. Use an HTTPS metrics endpoint for a remote server.
+
+The algorithm:
+
+1. Reads actual regional Machine placement for the selected app/process group. Failed, transitional, or unknown Machine states block the cycle; stopped/suspended Machines count as provisioned placements that Fly may autostart.
+2. Queries `sum(increase(fly_edge_http_responses_count{app="..."}[5m])) by (region)`.
+3. Updates chronological short/long exponential averages using the configured sample windows.
+4. Adds a region when its short average is at least `traffic_threshold`. The first high sample can trigger placement; sustained demand is not hidden by a rising threshold.
+5. Removes a region only when both averages are at most `deployment_threshold`, cooldown has elapsed, and all region protections and minimum capacity checks permit it.
+
+The thresholds are fixed configured request counts; smoothing and the gap between them provide hysteresis. The previous experimental volatility-based moving threshold was removed because it prevented initial and sustained-high-traffic scale-up.
+
+Missing metrics are **unknown**, not zero. An empty result or failed query makes no infrastructure changes. A nonempty successful query may restore missing protected regions even when they have no regional traffic sample. Explicit zero observations can eventually remove an unprotected region.
+
+Additions happen before removals. If an addition fails, or any protected region remains missing, removals are deferred. If required placements cannot be restored within `max_regions`, the cycle reports an error and makes no changes; increase the limit or reconcile placement manually. `min_regions` is a removal floor, not a target for adding arbitrary low-traffic regions.
+
+`always_running_regions` protects regional **placement** from this controller's removals. It does not override Fly's own autostop/autostart configuration or independently guarantee Machine health. Use the target application's Fly settings for those policies.
+
+## State and recovery
+
+State and traffic history live under:
+
+```text
+<data_dir>/<target-app>/<process-group>/
 ```
 
-This will start the auto-placer service in dry-run mode using the [default config](#configuration) in [`placer-service/config/config.yaml`](placer-service/config/config.yaml) on [http://localhost:8000](http://localhost:8000)
+Dry-run and live files are separate. Writes use atomic replacement. Attempt timestamps are persisted before commands, and successful membership changes immediately afterward. A timeout can mean a Fly command partially applied; the next run reconciles actual Machines and retains cooldown before retrying.
 
-**Currently, the service will not make any changes to your Fly.io application.**
+Do not erase state to work around malformed files or cooldown. Inspect and repair the underlying issue. Reconciliation cannot recover lost cooldown timestamps. Keep a persistent volume and retain it across controller releases.
 
-It will also start the placer-dashboard (Remix.run) in watch mode. <br/>
-Open [http://localhost:8080](http://localhost:8080) to view it in the browser.
+## Deploy the controller to Fly
 
-## Triggering the auto-placer
+The root `Dockerfile.fly` packages both processes, the pinned Fly CLI, and locked dependencies. The root `fly.toml` uses a private process-specific backend address on port 8000 and exposes the read-only dashboard over HTTPS.
 
-```bash
-curl -X POST http://localhost:8000/trigger
+1. Change the controller app name in root `fly.toml` and update `PLACER_SERVICE_URL` to `http://placer.process.<controller-app>.internal:8000`.
+2. Create the controller app and the `placer_service_data` volume in its primary region.
+3. Set `PLACER_API_TOKEN` as a Fly secret. For live operation, also set the three live-mode variables above as secrets/environment values.
+4. Deploy with `fly deploy` and keep the `placer` process count at one.
+5. Verify health and authenticated metrics before scheduling placement calls. The placer endpoint is private in the combined deployment; call it from within the Fly private network or through a local `fly proxy`.
+
+The standalone service and dashboard Dockerfiles/Fly configurations are also supported. The standalone API requires the same bearer token. Set the dashboard's service URL to the reachable API address and give it the same controller token. The dashboard never forwards that token to the browser and cannot trigger scaling. Its regional traffic view is public wherever you expose the dashboard; restrict access at your network/authentication layer if needed.
+
+Environment files, private keys, generated data, and logs are excluded from every Docker build context. Supply secrets at runtime.
+
+## Verification and dependency maintenance
+
+```sh
+cd placer-service
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
+.venv/bin/python -m pytest
 ```
 
-This will trigger the auto-placer service and return the current deployment state. <br/>
-You can run this _multiple times_ to see the [**adaptive thresholds**](#placement-logic) in action.
+The suite covers decision logic, authenticated requests, config reloads, state isolation, cooldown and recovery, protected/minimum/maximum regions, CLI target selection, malformed metrics, and repeated end-to-end placement cycles with Fly mocked.
 
-## Table of Contents
+The GitHub workflow tests Python 3.11/3.12 and builds all three images before deployment from `main`. Dependency versions and hashes are committed in `requirements*.txt` and `deno.lock`; the Python lock regeneration commands are in `pyproject.toml`.
 
-- [Fly Auto-Placer](#fly-auto-placer)
-  - [Getting Started](#getting-started)
-  - [Configuration](#configuration)
-    - [Environment Variables](#environment-variables)
-  - [Local Development](#local-development)
-  - [Triggering the auto-placer](#triggering-the-auto-placer)
-  - [Table of Contents](#table-of-contents)
-  - [Placement Logic](#placement-logic)
-  - [Features](#features)
-  - [Application Configuration](#application-configuration)
-  - [Fly.io Setup](#flyio-setup)
-    - [Fly CLI](#fly-cli)
-    - [Fly.io API Token](#flyio-api-token)
-    - [Prometheus Metrics Setup](#prometheus-metrics-setup)
-  - [Understanding the Output](#understanding-the-output)
-  - [Roadmap](#roadmap)
-  - [License](#license)
-
-## Placement Logic
-
-The placement algorithm is simple and can be found in [`prediction/placement_predictor.py`](placer-service/prediction/placement_predictor.py).
-
-`fly-autoplacer` uses a combination of **short-term and long-term average traffic** to make placement decisions, as well as a **cooldown** period to prevent rapid re-deployment of regions.
-
-These settings can be adjusted in the [`config/config.yml`](placer-service/config/config.yml) file.
-
-## Features
-
-- **Dynamic Region Placement**: Automatically deploys or removes machines in regions based on real-time traffic.
-- **Real-Time Traffic Metrics**: Fetches current HTTP response counts per region.
-- **Customizable Configuration**: Adjust thresholds, cooldown periods, and specify allowed or excluded regions.
-- **Prometheus API Integration**: Connects directly to Fly.io's Prometheus API for up-to-date metrics.
-- **Dry Run Mode**: Test the scaling logic without affecting actual deployments.
-- **Historical Data Storage**: Keeps a history of traffic data for better scaling decisions.
-
-## Application Configuration
-
-Update the `config/config.yml` to tweak the placement logic. <br/>
-There is a file watcher in place so any changes made while the service is running will be applied automatically.
-
-```yaml
-# Configuration settings for the auto-placer
-
-dry_run: True
-
-# Cooldown period to prevent rapid re-deployment
-# Used as a safeguard to prevent rapid re-deployment of regions when traffic
-# exceeds the adaptive threshold settings.
-cooldown_period: 10  # Cooldown period in seconds
-
-# Define parameters for calculating short-term and long-term traffic averages
-# These parameters are used to analyze recent trends and overall patterns in traffic data
-short_term_window: 5  # Number of recent data points to consider for short-term analysis
-long_term_window: 20  # Number of data points to consider for long-term analysis
-alpha_short: 0.3  # Exponential smoothing factor for short-term average (higher weight to recent data)
-alpha_long: 0.1  # Exponential smoothing factor for long-term average (more stable, less reactive)
-
-# Thresholds for traffic-based placement decisions
-traffic_threshold: 50         # Deploy to regions with average traffic >= 50
-deployment_threshold: 10      # Remove from regions with average traffic <= 10
-
-# Optional: Define allowed or excluded regions
-allowed_regions:
-  - iad
-  - cdg
-  - lhr
-  - fra
-  - sfo
-
-excluded_regions:
-  - nrt
-
-always_running_regions:
-  - fra
-
-```
-
-## Fly.io Setup
-
-### Fly CLI
-
-- **Fly CLI**: Install the Fly.io command-line tool.
-
-  ```bash
-  curl -L https://fly.io/install.sh | sh
-  ```
-
-### Fly.io API Token
-
-- Log in to your Fly.io account.
-- Navigate to **Account Settings**.
-- Generate a new personal access token with read/write permissions.
-
-### Prometheus Metrics Setup
-
-- Ensure that your Fly.io application is configured to expose Prometheus metrics.
-- Refer to the [Fly.io Metrics Documentation](https://fly.io/docs/reference/metrics/) for details.
-
-## Understanding the Output
-
-**Monitor Logs**:
-   Logs are stored in the [`placer-service/data/logs/auto_placer.log`](placer-service/data/logs/auto_placer.log) file for detailed information.
-
-**View Current Deployments**:
-   The deployment state is saved in [`placer-service/data/deployment_state_dry_run.json`](placer-service/data/deployment_state_dry_run.json).
-
-Here is some example output from the auto-placer after triggering:
-
-```json
-{
-    "deployed": [],
-    "removed": [],
-    "skipped": [
-        {
-            "region": "cdg",
-            "action": "none",
-            "reason": "Traffic does not meet adaptive thresholds. Current avg: 36.65, Long-term avg: 39.29"
-        },
-        {
-            "region": "ams",
-            "action": "deploy",
-            "reason": "Region is not in allowed_regions list"
-        },
-        {
-            "region": "iad",
-            "action": "none",
-            "reason": "Traffic does not meet adaptive thresholds. Current avg: 30.26, Long-term avg: 37.77"
-        },
-        {
-            "region": "sin",
-            "action": "deploy",
-            "reason": "Region is not in allowed_regions list"
-        },
-        {
-            "region": "nrt",
-            "action": "deploy",
-            "reason": "Region is in excluded_regions list"
-        },
-        {
-            "region": "lhr",
-            "action": "none",
-            "reason": "Traffic does not meet adaptive thresholds. Current avg: 43.11, Long-term avg: 21.10"
-        },
-        {
-            "region": "fra",
-            "action": "none",
-            "reason": "Traffic does not meet adaptive thresholds. Current avg: 19.12, Long-term avg: 38.01"
-        },
-        {
-            "region": "sfo",
-            "action": "none",
-            "reason": "Traffic does not meet adaptive thresholds. Current avg: 27.22, Long-term avg: 35.91"
-        }
-    ],
-    "current_deployment": [
-        "fra",
-        "iad",
-        "lhr",
-        "cdg"
-    ],
-    "updated_deployment": [
-        "fra",
-        "iad",
-        "lhr",
-        "cdg"
-    ]
-}
-```
-
-The `deployed` and `removed` lists show the regions that were deployed or removed.
-The `skipped` list shows the regions that were skipped due to not meeting the adaptive thresholds or being in the excluded regions list.
-The `current_deployment` and `updated_deployment` lists show the current and updated deployment state respectively.
-
-**Note: This is dry-run output. No changes will be made to your Fly.io application.**
-
-## Roadmap
-
-- **Advanced Traffic Forecasting**: Implement time-series forecasting models for better scaling decisions.
-- **Real-Time Monitoring**: Integrate with monitoring tools like Prometheus and Grafana.
-- **Improved State Management**: Utilize distributed key-value stores like etcd or Consul.
-- **Autoscaling Integration**: Explore Fly.io's built-in autoscaling capabilities.
+Live operation still depends on your target app configuration, account permissions, metrics availability, and regional capacity. Local tests and container smoke checks do not substitute for a controlled first run against your chosen Fly application.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-Feel free to explore, contribute, and provide feedback to help improve Fly Placer.
+MIT.

@@ -1,11 +1,13 @@
 app = "fly-auto-placer"
 primary_region = "sea"
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
 
 [build]
   dockerfile = "Dockerfile.fly"
 
 [env]
-  PLACER_SERVICE_URL = "http://placer.internal:8080"
+  PLACER_SERVICE_URL = "http://placer.process.fly-auto-placer.internal:8000"
 
 [processes]
   dashboard = "dashboard"
@@ -22,15 +24,34 @@ primary_region = "sea"
     type = "requests"
     soft_limit = 200
     hard_limit = 250
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"
 
-# VM configurations for each process
-[process_groups.dashboard]
+[checks.placer]
+  processes = ["placer"]
+  type = "http"
+  port = 8000
+  method = "GET"
+  path = "/health"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"
+
+[[vm]]
+  processes = ["dashboard"]
   cpu_kind = "shared"
   cpus = 1
+  memory = "512mb"
 
-[process_groups.placer]
+[[vm]]
+  processes = ["placer"]
   cpu_kind = "shared"
   cpus = 1
+  memory = "512mb"
 
 [[mounts]]
   source = "placer_service_data"

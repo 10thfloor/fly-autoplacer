@@ -6,8 +6,7 @@ __pycache__/
 *$py.class
 
 # Deno
-dashboard/node_modules
-deno.lock
+node_modules/
 
 # C extensions
 *.so
@@ -37,6 +36,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+placer-service/main/
 
 # Installer logs
 pip-log.txt
@@ -98,6 +98,8 @@ celerybeat-schedule.*
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -129,8 +131,9 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Poetry
-poetry.lock
+# Local runtime state (the tracked dry-run fixtures are retained for reference).
+placer-service/data/
+placer-service/logs/
 
 # VS Code
 .vscode
